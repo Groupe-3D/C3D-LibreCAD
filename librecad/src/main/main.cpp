@@ -49,6 +49,7 @@
 
 #include "console_dxf2pdf.h"
 #include "console_dxf2png.h"
+#include "console_lwpl_dxf2vec.h"
 
 namespace
 {
@@ -82,9 +83,14 @@ int main(int argc, char** argv)
         if (arg.compare("dxf2png") == 0 || arg == "dxf2svg") {
             return console_dxf2png(argc, argv);
         }
+        if (arg.compare("lwpl_dxf2vec") == 0) {
+            return console_lwpl_dxf2vec(argc, argv);
+        }
     }
 
     RS_DEBUG->setLevel(RS_Debug::D_WARNING);
+
+    qDebug() << "/!\\ C3D forked version";
 
     LC_Application app(argc, argv);
     QCoreApplication::setOrganizationName("LibreCAD");
