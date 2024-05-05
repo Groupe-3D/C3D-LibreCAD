@@ -28,7 +28,7 @@ Makefile
 .libs
 generated/*
 clean
-custom.*
+#custom.*
 Unnamed
 
 # Unix generated directories and files (except Apple)
