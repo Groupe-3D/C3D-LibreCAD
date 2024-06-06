@@ -247,40 +247,83 @@ RS_Modification::RS_Modification(RS_EntityContainer& container,
 }
 
 
-
 /**
  * Deletes all selected entities.
  */
-void RS_Modification::remove() {
-
+void RS_Modification::remove()
+{
     RS_DEBUG->print(RS_Debug::D_DEBUGGING, "RS_Modification::remove");
 
-	if (!container) {
+    if (container == nullptr)
+    {
         RS_DEBUG->print(RS_Debug::D_ERROR, "RS_Modification::remove: no valid container");
+
         return;
     }
 
-    LC_UndoSection undo( document);
+    bool found = false;
+
+    bool deselectEntitiesMode = false;
+
+    LC_UndoSection undo(document);
     bool invalidContainer {true};
 	// not safe (?)
-    for(auto e: *container) {
-        if (e && e->isSelected()) {
+    for (auto* e : *container)
+    {
+        if (e != nullptr && e->isSelected())
+        {
+            found = true;
+
+            if (m_deletePolylineNodeMode)
+            {
+                switch(e->rtti())
+                {
+                case RS2::EntityPolyline:
+                    e = deletePolylineNode((RS_Polyline&) *e, ((RS_Polyline&) *e).getHighlightedVertex());
+                    break;
+                case RS2::EntityLine:
+                {
+                    if (document->countSelected() != 1)
+                    {
+                        RS_DEBUG->print(RS_Debug::D_ERROR, "RS_Modification::remove: multiple lines selected");
+                        deselectEntitiesMode = true;
+                    }
+                    else
+                    {
+                        deleteLineNode((RS_Line *) e, ((RS_Line&) *e).getHighlightedVertex());
+                    }
+                }
+                    break;
+                default:
+                    RS_DEBUG->print(RS_Debug::D_ERROR, "RS_Modification::remove: no line or polyline selected");
+                }
+                m_deletePolylineNodeMode = false;
+            }
+            else if (!deselectEntitiesMode)
+            {
+                e->changeUndoState();
+                undo.addUndoable(e);
+                invalidContainer = false;
+            }
+
             e->setSelected(false);
-            e->changeUndoState();
-            undo.addUndoable(e);
-            invalidContainer = false;
         }
     }
     if (invalidContainer) {
         RS_DEBUG->print(RS_Debug::D_WARNING, "RS_Modification::remove: no valid container is selected");
     }
 
+    if (!found) RS_DEBUG->print(RS_Debug::D_WARNING, "RS_Modification::remove: no valid container is selected");
+
     graphicView->redraw(RS2::RedrawDrawing);
 
     RS_DEBUG->print(RS_Debug::D_DEBUGGING, "RS_Modification::remove: OK");
 }
 
-
+void RS_Modification::setDeletePolylineNodeMode()
+{
+    m_deletePolylineNodeMode = true;
+}
 
 /**
  * Revert direction of selected entities.
@@ -814,7 +857,7 @@ bool RS_Modification::pasteContainer(RS_Entity* entity, RS_EntityContainer* cont
     // make new block in the destination
     RS_Block* blockClone = addNewBlock(name_new, *graphic);
     // create insert for the new block
-    RS_InsertData di = RS_InsertData(name_new, insertionPoint, RS_Vector(1.0, 1.0), insert->getAngle(), 1, 1, RS_Vector(0.0,0.0));
+    RS_InsertData di = RS_InsertData(name_new, insertionPoint, RS_Vector(1.0, 1.0), 0.0, 1, 1, RS_Vector(0.0,0.0));
     RS_Insert* insertClone = new RS_Insert(container, di);
     insertClone->reparent(container);
     container->addEntity(insertClone);
@@ -950,7 +993,7 @@ bool RS_Modification::splitPolyline(RS_Polyline& polyline,
     RS_Polyline* pl2 = new RS_Polyline(container);
     RS_Polyline* pl = pl1;	// Current polyline
 	RS_Line* line = nullptr;
-	RS_Arc* arc = nullptr;
+	[[maybe_unused]] RS_Arc* arc = nullptr;
 
     if (polyline1) {
         *polyline1 = pl1;
@@ -1009,7 +1052,7 @@ bool RS_Modification::splitPolyline(RS_Polyline& polyline,
     container->addEntity(pl2);
     //container->removeEntity(&polyline);
     polyline.changeUndoState();
-	Q_UNUSED( arc ); /* TNick: set but not used */
+
     return true;
 }
 
@@ -1122,6 +1165,133 @@ RS_Polyline* RS_Modification::addPolylineNode(RS_Polyline& polyline,
     }
 
     return newPolyline;
+}
+
+
+
+/*
+    Deletes a node from a set of lines, as if it were a polyline; and if no other
+    lines are near the selected node/point, then it deletes the line itself.
+
+    - by Melwyn Francis Carlo
+*/
+void RS_Modification::deleteLineNode(RS_Line* line, const RS_Vector& node)
+{
+    RS_DEBUG->print("RS_Modification::deleteLineNode");
+
+	if (!container)
+    {
+        RS_DEBUG->print(RS_Debug::D_WARNING, "RS_Modification::deleteLineNode: no valid container");
+		return;
+    }
+
+	if (!node.valid)
+    {
+        RS_DEBUG->print(RS_Debug::D_WARNING, "RS_Modification::deleteLineNode: node not valid");
+		return;
+    }
+
+
+    bool nodeIsStartPoint { true };
+
+    if (node == line->getEndpoint()) nodeIsStartPoint = false;
+
+
+    for (unsigned int i = 0; i < document->count(); i++)
+    {
+        if (document->entityAt(i)->rtti() == RS2::EntityLine)
+        {
+            RS_DEBUG->print("RS_Modification::deleteLineNode: connecting (another) line found");
+
+            RS_Line *anotherLine = (RS_Line *) (document->entityAt(i));
+
+            if (line == anotherLine) continue;
+
+            RS_Vector startEndPoints[2] { line->getStartpoint(), line->getEndpoint() };
+
+            if (nodeIsStartPoint)
+            {
+                RS_DEBUG->print("RS_Modification::deleteLineNode: node is original line's start point");
+
+                if (node.distanceTo(anotherLine->getStartpoint()) < RS_TOLERANCE)
+                {
+                    startEndPoints[0] = anotherLine->getEndpoint();
+                }
+                else if (node.distanceTo(anotherLine->getEndpoint()) < RS_TOLERANCE)
+                {
+                    startEndPoints[0] = anotherLine->getStartpoint();
+                }
+                else
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                RS_DEBUG->print("RS_Modification::deleteLineNode: node is original line's end point");
+
+                if (node.distanceTo(anotherLine->getStartpoint()) < RS_TOLERANCE)
+                {
+                    startEndPoints[1] = anotherLine->getEndpoint();
+                }
+                else if (node.distanceTo(anotherLine->getEndpoint()) < RS_TOLERANCE)
+                {
+                    startEndPoints[1] = anotherLine->getStartpoint();
+                }
+                else
+                {
+                    continue;
+                }
+            }
+
+
+            RS_DEBUG->print("RS_Modification::deleteLineNode: adding new line and deleting another line");
+
+            RS_Line* newLine { new RS_Line(container, startEndPoints[0], startEndPoints[1]) };
+
+            newLine->setLayer(line->getLayer());
+            newLine->setPen(line->getPen());
+
+            container->addEntity(newLine);
+
+            if (graphicView)
+            {
+                graphicView->drawEntity(newLine);
+                graphicView->deleteEntity(anotherLine);
+            }
+
+            RS_DEBUG->print("RS_Modification::deleteLineNode: handling new and another line's undo");
+
+            if (handleUndo)
+            {
+                LC_UndoSection undo(document);
+
+                newLine->setUndoState(false);
+                anotherLine->setUndoState(true);
+
+                undo.addUndoable(newLine);
+                undo.addUndoable(anotherLine);
+            }
+
+            break;
+        }
+    }
+
+
+    RS_DEBUG->print("RS_Modification::deleteLineNode: deleting original line");
+
+    if (graphicView) graphicView->deleteEntity(line);
+
+    RS_DEBUG->print("RS_Modification::deleteLineNode: handling original line's undo");
+
+    if (handleUndo)
+    {
+        LC_UndoSection undo(document);
+        line->setUndoState(true);
+        undo.addUndoable(line);
+    }
+
+    RS_DEBUG->print("RS_Modification::deleteLineNode: OK");
 }
 
 
@@ -1276,8 +1446,7 @@ RS_Polyline* RS_Modification::deletePolylineNode(RS_Polyline& polyline,
  */
 
 RS_Polyline* RS_Modification::deletePolylineNodesBetween(RS_Polyline& polyline,
-        RS_AtomicEntity& segment, const RS_Vector& node1, const RS_Vector& node2) {
-    Q_UNUSED(segment);
+        [[maybe_unused]] RS_AtomicEntity& segment, const RS_Vector& node1, const RS_Vector& node2) {
     RS_DEBUG->print("RS_Modification::deletePolylineNodesBetween");
 
 	if (!container) {
@@ -1898,10 +2067,10 @@ bool RS_Modification::scale(RS_ScaleData& data) {
 
 	for(auto ec: *container){
         if (ec->isSelected() ) {
-            if ( std::abs(data.factor.x - data.factor.y) > RS_TOLERANCE ) {
+            if ( !data.isotropicScaling ) {
                     if ( ec->rtti() == RS2::EntityCircle ) {
     //non-isotropic scaling, replacing selected circles with ellipses
-				RS_Circle *c=static_cast<RS_Circle*>(ec);
+                auto* c=static_cast<RS_Circle*>(ec);
 				ec= new RS_Ellipse{container,
 				{c->getCenter(), {c->getRadius(),0.},
 						1.,

@@ -145,13 +145,10 @@ QString RS_FilterDXFRW::lastError() const
  * will be created or the graphics from which the entities are
  * taken to be stored in a file.
  */
-bool RS_FilterDXFRW::fileImport(RS_Graphic& g, const QString& file, RS2::FormatType type) {
+bool RS_FilterDXFRW::fileImport(RS_Graphic& g, const QString& file, [[maybe_unused]] RS2::FormatType type) {
     RS_DEBUG->print("RS_FilterDXFRW::fileImport");
 
     RS_DEBUG->print("DXFRW Filter: importing file '%s'...", (const char*)QFile::encodeName(file));
-#ifndef DWGSUPPORT
-    Q_UNUSED(type)
-#endif
 
     graphic = &g;
     currentContainer = graphic;
@@ -308,7 +305,7 @@ void RS_FilterDXFRW::addVport(const DRW_Vport &data) {
         graphic->setIsometricGrid(data.snapStyle);
         graphic->setCrosshairType( (RS2::CrosshairType)data.snapIsopair);
         RS_GraphicView *gv = graphic->getGraphicView();
-		if (gv ) {
+        if (gv ) {
             double width = data.height * data.ratio;
             double factorX= gv->getWidth() / width;
             double factorY= gv->getHeight() / data.height;
