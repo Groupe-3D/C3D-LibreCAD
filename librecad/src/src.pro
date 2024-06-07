@@ -295,7 +295,8 @@ HEADERS += \
     actions/lc_abstractactiondrawline.h \
     ui/forms/LC_DlgParabola.h \
     ui/lc_quickinfowidgetoptions.h \
-    ui/lc_quickinfowidgetoptionsdialog.h
+    ui/lc_quickinfowidgetoptionsdialog.h \
+    main/console_dxf2vec.h
 
 SOURCES += \
     actions/lc_abstractactiondrawrectangle.cpp \
@@ -451,7 +452,8 @@ SOURCES += \
     ui/lc_quickinfopointsdata.cpp \
     ui/lc_quickinfowidget.cpp \
     ui/lc_quickinfowidgetoptions.cpp \
-    ui/lc_quickinfowidgetoptionsdialog.cpp
+    ui/lc_quickinfowidgetoptionsdialog.cpp \
+    main/console_dxf2vec.cpp
 
 
 # ################################################################################
