@@ -49,6 +49,7 @@
 
 #include "console_dxf2pdf.h"
 #include "console_dxf2png.h"
+#include "console_dxf2vec.h"
 
 namespace
 {
@@ -71,10 +72,14 @@ int main(int argc, char** argv)
     //
     //     dxf2pdf [options] ...
     //
+    // Now there is also dxf2vec to generate a binary list of points as .vec
     for (int i = 0; i < qMin(argc, 2); i++) {
         QString arg(argv[i]);
         if (i == 0) {
             arg = QFileInfo(QFile::decodeName(argv[i])).baseName();
+        }
+        if (arg.compare("dxf2vec") == 0) {
+            return console_dxf2vec(argc, argv);
         }
         if (arg.compare("dxf2pdf") == 0) {
             return console_dxf2pdf(argc, argv);
