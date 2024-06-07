@@ -99,7 +99,7 @@ std::unique_ptr<QList<QList<QVector3D>>> dxfToPolygons(const QString& dxfFile)
 {
     auto polygons = std::make_unique<QList<QList<QVector3D>>>();
 
-    std::unique_ptr<RS_Document> doc = std::make_unique<RS_Document>();
+    /*std::unique_ptr<RS_Document> doc = std::make_unique<RS_Document>();
     if (!doc->open(dxfFile, RS2::FormatUnknown)){
         return polygons;
     }
@@ -107,10 +107,10 @@ std::unique_ptr<QList<QList<QVector3D>>> dxfToPolygons(const QString& dxfFile)
     RS_Graphic* graphic = doc->getGraphic();
     if (graphic == nullptr) {
         return polygons;
-    }
+    }*/
 
     // TODO unify a way to specify precision (angular): pi/18 radians (10-degrees) for now
-    for (RS_Entity* entity : *graphic) {
+    /*for (RS_Entity* entity : *graphic) {
         QList<QVector3D> polygon;
 
         switch (entity->rtti()) {
@@ -122,7 +122,6 @@ std::unique_ptr<QList<QList<QVector3D>>> dxfToPolygons(const QString& dxfFile)
             }
             break;
         }
-        /*
         case RS2::EntityArc: {
             RS_Arc* arc = static_cast<RS_Arc*>(entity);
             RS_Vector center = arc->getCenter();
@@ -171,7 +170,6 @@ std::unique_ptr<QList<QList<QVector3D>>> dxfToPolygons(const QString& dxfFile)
             polygon.append(QVector3D(endPos.x, endPos.y, 0.0));
             break;
         }
-        */
         default:
             break;
         }
@@ -179,7 +177,7 @@ std::unique_ptr<QList<QList<QVector3D>>> dxfToPolygons(const QString& dxfFile)
         if (!polygon.isEmpty()) {
             polygons->append(polygon);
         }
-    }
+    }*/
 
     return polygons;
 }
