@@ -12,6 +12,8 @@
 #include "rs_ellipse.h"
 #include "rs_line.h"
 #include "rs_math.h"
+#include "main.h"
+#include "qc_applicationwindow.h"
 
 #include <QCoreApplication>
 #include <QCommandLineParser>
@@ -120,6 +122,7 @@ std::unique_ptr<QList<QList<QVector3D>>> dxfToPolygons(const QString& dxfFile)
             }
             break;
         }
+        /*
         case RS2::EntityArc: {
             RS_Arc* arc = static_cast<RS_Arc*>(entity);
             RS_Vector center = arc->getCenter();
@@ -168,12 +171,13 @@ std::unique_ptr<QList<QList<QVector3D>>> dxfToPolygons(const QString& dxfFile)
             polygon.append(QVector3D(endPos.x, endPos.y, 0.0));
             break;
         }
+        */
         default:
             break;
         }
 
         if (!polygon.isEmpty()) {
-            polygons.append(polygon);
+            polygons->append(polygon);
         }
     }
 
