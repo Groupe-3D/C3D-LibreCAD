@@ -95,7 +95,7 @@ int console_dxf2vec(int argc, char* argv[])
     return EXIT_SUCCESS;
 }
 
-std::unique_ptr<QList<QList<QVector3D>>> dxfToPolygons(const QString& dxfFile)
+std::unique_ptr<QList<QList<QVector3D>>> dxfToPolygons([[maybe_unused]] const QString& dxfFile)
 {
     auto polygons = std::make_unique<QList<QList<QVector3D>>>();
 
