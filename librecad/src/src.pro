@@ -113,6 +113,7 @@ INCLUDEPATH += \
     actions \
     main \
     main/console_dxf2pdf \
+    main/console_dxf2vec \
     test \
     plugins \
     ui \
@@ -295,8 +296,7 @@ HEADERS += \
     actions/lc_abstractactiondrawline.h \
     ui/forms/LC_DlgParabola.h \
     ui/lc_quickinfowidgetoptions.h \
-    ui/lc_quickinfowidgetoptionsdialog.h \
-    main/console_dxf2vec.h
+    ui/lc_quickinfowidgetoptionsdialog.h
 
 SOURCES += \
     actions/lc_abstractactiondrawrectangle.cpp \
@@ -452,8 +452,7 @@ SOURCES += \
     ui/lc_quickinfopointsdata.cpp \
     ui/lc_quickinfowidget.cpp \
     ui/lc_quickinfowidgetoptions.cpp \
-    ui/lc_quickinfowidgetoptionsdialog.cpp \
-    main/console_dxf2vec.cpp
+    ui/lc_quickinfowidgetoptionsdialog.cpp
 
 
 # ################################################################################
@@ -1070,7 +1069,8 @@ HEADERS += \
     main/main.h \
     main/mainwindowx.h \
     main/console_dxf2pdf/console_dxf2pdf.h \
-    main/console_dxf2pdf/pdf_print_loop.h
+    main/console_dxf2pdf/pdf_print_loop.h \
+    main/console_dxf2vec/console_dxf2vec.h
 
 SOURCES += \
     main/qc_applicationwindow.cpp \
@@ -1083,7 +1083,8 @@ SOURCES += \
     main/main.cpp \
     main/mainwindowx.cpp \
     main/console_dxf2pdf/console_dxf2pdf.cpp \
-    main/console_dxf2pdf/pdf_print_loop.cpp
+    main/console_dxf2pdf/pdf_print_loop.cpp \
+    main/console_dxf2vec/console_dxf2vec.cpp
 
 # If C99 emulation is needed, add the respective source files.
 contains(DEFINES, EMU_C99) {

@@ -38,6 +38,7 @@ unix/
 *.AppImage
 
 # Win/MSVC generated files and binaries
+cad/
 windows/
 release/
 debug/
