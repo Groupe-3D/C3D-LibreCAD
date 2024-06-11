@@ -11,14 +11,10 @@
 #include "main.h"
 
 #include "console_dxf2vec.h"
+#include "vec_converter_loop.h"
 
 
-static RS_Vector parsePageSizeArg(QString);
-static void parsePagesNumArg(QString, PdfPrintParams&);
-static void parseMarginsArg(QString, PdfPrintParams&);
-
-
-int console_dxf2pdf(int argc, char* argv[])
+int console_dxf2vec(int argc, char* argv[])
 {
     RS_DEBUG->setLevel(RS_Debug::D_NOTHING);
 
@@ -63,29 +59,37 @@ int console_dxf2pdf(int argc, char* argv[])
         QObject::tr( "Target output directory."), "path");
     parser.addOption(outDirOpt);
 
+    QCommandLineOption precisionOpt(QStringList() << "p" << "precision",
+                                 QObject::tr( "Angular accuracy when rasterizing."), "float");
+    parser.addOption(precisionOpt);
+
     parser.addPositionalArgument(QObject::tr( "<dxf_files>"), QObject::tr( "Input DXF file(s)"));
 
     parser.process(app);
 
     const QStringList args = parser.positionalArguments();
 
-    if (args.isEmpty() || (args.size() == 1 && args[0] == "dxf2vec"))
+    if (args.isEmpty() || (args.size() == 1 && args[0] == "dxf2vec")) {
         parser.showHelp(EXIT_FAILURE);
+    }
 
-    PdfPrintParams params;
+    VecConverterParams params;
 
     params.outFile = parser.value(outFileOpt);
     params.outDir = parser.value(outDirOpt);
+    params.precision = parser.value(precisionOpt).toUInt(nullptr, 10);
 
-    for (auto arg : args) {
+    for (auto &arg : args) {
         QFileInfo dxfFileInfo(arg);
-        if (dxfFileInfo.suffix().toLower() != "dxf")
+        if (dxfFileInfo.suffix().toLower() != "dxf") {
             continue; // Skip files without .dxf extension
+        }
         params.dxfFiles.append(arg);
     }
 
-    if (params.dxfFiles.isEmpty())
+    if (params.dxfFiles.isEmpty()) {
         parser.showHelp(EXIT_FAILURE);
+    }
 
     if (!params.outDir.isEmpty()) {
         // Create output directory
@@ -97,6 +101,12 @@ int console_dxf2pdf(int argc, char* argv[])
 
     RS_FONTLIST->init();
     RS_PATTERNLIST->init();
+
+    VecConverterLoop *loop = new VecConverterLoop(params, &app);
+
+    QObject::connect(loop, SIGNAL(finished()), &app, SLOT(quit()));
+
+    QTimer::singleShot(0, loop, SLOT(run()));
 
     return app.exec();
 }

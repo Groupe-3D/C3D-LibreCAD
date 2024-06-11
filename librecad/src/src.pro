@@ -1070,7 +1070,8 @@ HEADERS += \
     main/mainwindowx.h \
     main/console_dxf2pdf/console_dxf2pdf.h \
     main/console_dxf2pdf/pdf_print_loop.h \
-    main/console_dxf2vec/console_dxf2vec.h
+    main/console_dxf2vec/console_dxf2vec.h \
+    main/console_dxf2vec/vec_converter_loop.h
 
 SOURCES += \
     main/qc_applicationwindow.cpp \
@@ -1084,7 +1085,8 @@ SOURCES += \
     main/mainwindowx.cpp \
     main/console_dxf2pdf/console_dxf2pdf.cpp \
     main/console_dxf2pdf/pdf_print_loop.cpp \
-    main/console_dxf2vec/console_dxf2vec.cpp
+    main/console_dxf2vec/console_dxf2vec.cpp \
+    main/console_dxf2vec/vec_converter_loop.cpp
 
 # If C99 emulation is needed, add the respective source files.
 contains(DEFINES, EMU_C99) {
