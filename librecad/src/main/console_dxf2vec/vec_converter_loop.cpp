@@ -74,9 +74,12 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
             RS_Polyline *polyline = static_cast<RS_Polyline *>(entity);
             QList<QVector3D> polylinePoints;
             for (const RS_Entity *e : *polyline) {
-                if (e->rtti() == RS2::EntityLine || e->rtti() == RS2::EntityArc) {
+                if (e->rtti() == RS2::EntityLine) {
                     RS_Vector startPoint = e->getStartpoint();
                     polylinePoints.append(QVector3D(startPoint.x, startPoint.y, startPoint.z));
+                } else {
+                    qDebug() << "Ignore entity with rtti=" << e->rtti()
+                             << "(not an EntityLine) in EntityPolyline";
                 }
             }
             allPolylinesPoints.append(polylinePoints);
@@ -88,6 +91,9 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
                     processEntityRef(subEntity, processEntityRef);
                 }
             }
+        } else {
+            qDebug() << "Ignore top level entity with rtti=" << entity->rtti()
+                     << "(not an EntityPolyline)";
         }
     };
 
