@@ -23,16 +23,20 @@
 **
 ******************************************************************************/
 
+#include <QList>
+#include <QVector3D>
 #include <QtCore>
 
 #include "rs.h"
+#include "rs_blocklist.h"
 #include "rs_graphic.h"
 #include "rs_painterqt.h"
-#include "lc_printing.h"
-#include "rs_staticgraphicview.h"
+#include "rs_polyline.h"
 #include "rs_units.h"
 
 #include "vec_converter_loop.h"
+
+static bool openDocAndSetGraphic(RS_Document **, RS_Graphic **, const QString &);
 
 void VecConverterLoop::run()
 {
@@ -47,17 +51,11 @@ void VecConverterLoop::run()
     emit finished();
 }
 
-
-void VecConverterLoop::convertOneDxfToOneVec(const QString& dxfFile) {
-
-    // Main code logic and flow for this method is originally stolen from
-    // QC_ApplicationWindow::slotFilePrint(bool printPDF) method.
-    // But finally it was split in to smaller parts.
-
+void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
+{
     QFileInfo dxfFileInfo(dxfFile);
-    params.outFile =
-        (params.outDir.isEmpty() ? dxfFileInfo.path() : params.outDir)
-        + "/" + dxfFileInfo.completeBaseName() + ".pdf";
+    params.outFile = (params.outDir.isEmpty() ? dxfFileInfo.path() : params.outDir) + "/"
+                     + dxfFileInfo.completeBaseName() + ".vec";
 
     RS_Document *doc;
     RS_Graphic *graphic;
@@ -67,26 +65,32 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString& dxfFile) {
 
     qDebug() << "Printing" << dxfFile << "to" << params.outFile << ">>>>";
 
-    touchGraphic(graphic, params);
+    QList<QList<QVector3D>> allPolylinesPoints;
 
-    QPrinter printer(QPrinter::HighResolution);
+    for (auto entity : *graphic) {
+        if (entity->rtti() == RS2::EntityPolyline) {
+            RS_Polyline *polyline = static_cast<RS_Polyline *>(entity);
+            QList<QVector3D> polylinePoints;
 
-    setupPrinterAndPaper(graphic, printer, params);
+            for (auto v : polyline->getRefPoints()) {
+                polylinePoints.append(QVector3D(v.x, v.y, 0.0));
+            }
+            allPolylinesPoints.append(polylinePoints);
+        }
+    }
 
-    RS_PainterQt painter(&printer);
-
-    if (params.monochrome)
-        painter.setDrawingMode(RS2::ModeBW);
-
-    drawPage(graphic, printer, painter);
-
-    painter.end();
+    // DEBUG
+    for (const auto &polylinePoints : allPolylinesPoints) {
+        qDebug() << "Polyline:";
+        for (const auto &point : polylinePoints) {
+            qDebug() << point;
+        }
+    }
 
     qDebug() << "Printing" << dxfFile << "to" << params.outFile << "DONE";
 
     delete doc;
 }
-
 
 void VecConverterLoop::convertManyDxfToOneVec() {
 
@@ -110,8 +114,7 @@ void VecConverterLoop::convertManyDxfToOneVec() {
     // situation for the QPrinter and RS_PainterQt. Therefore, first open
     // all dxf files and apply required actions. Then run another 'for'
     // loop for actual printing.
-    for (auto dxfFile : params.dxfFiles) {
-
+    for (auto &dxfFile : params.dxfFiles) {
         DxfPage page;
 
         page.dxfFile = dxfFile;
@@ -121,7 +124,7 @@ void VecConverterLoop::convertManyDxfToOneVec() {
 
         qDebug() << "Opened" << dxfFile;
 
-        touchGraphic(page.graphic, params);
+        //touchGraphic(page.graphic, params);
 
         pages.append(page);
 
@@ -134,22 +137,19 @@ void VecConverterLoop::convertManyDxfToOneVec() {
         // FIXME: Is it possible to set up printer and paper for every
         // opened dxf file and tie them with painter? For now just using
         // data extracted from the first opened dxf file for all pages.
-        setupPrinterAndPaper(pages.at(0).graphic, printer, params);
+        //setupPrinterAndPaper(pages.at(0).graphic, printer, params);
     }
 
     RS_PainterQt painter(&printer);
 
-    if (params.monochrome)
-        painter.setDrawingMode(RS2::ModeBW);
-
     // And now it's time to actually print all previously opened dxf files.
-    for (auto page : pages) {
+    for (auto &page : pages) {
         nrPages--;
 
         qDebug() << "Printing" << page.dxfFile
                  << "to" << params.outFile << ">>>>";
 
-        drawPage(page.graphic, printer, painter);
+        //drawPage(page.graphic, printer, painter);
 
         qDebug() << "Printing" << page.dxfFile
                  << "to" << params.outFile << "DONE";
@@ -183,117 +183,4 @@ static bool openDocAndSetGraphic(RS_Document** doc, RS_Graphic** graphic,
     }
 
     return true;
-}
-
-
-static void touchGraphic(RS_Graphic* graphic, PdfPrintParams& params)
-{
-    graphic->calculateBorders();
-    graphic->setMargins(params.margins.left, params.margins.top,
-                        params.margins.right, params.margins.bottom);
-    graphic->setPagesNum(params.pagesH, params.pagesV);
-
-    if (params.scale > 0.0)
-        graphic->setPaperScale(params.scale);
-
-    if (params.pageSize != RS_Vector(0.0, 0.0))
-        graphic->setPaperSize(params.pageSize);
-
-    if (params.fitToPage)
-        graphic->fitToPage(); // fit and center
-    else if (params.centerOnPage)
-        graphic->centerToPage();
-}
-
-
-static void setupPrinterAndPaper(RS_Graphic* graphic, QPrinter& printer,
-    PdfPrintParams& params)
-{
-    bool landscape = false;
-
-    RS2::PaperFormat pf = graphic->getPaperFormat(&landscape);
-    QPageSize::PageSizeId paperSize = LC_Printing::rsToQtPaperFormat(pf);
-
-    if (paperSize == QPageSize::Custom){
-        RS_Vector r = graphic->getPaperSize();
-        RS_Vector s = RS_Units::convert(r, graphic->getUnit(),
-            RS2::Millimeter);
-        if (landscape)
-            s = s.flipXY();
-#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
-        printer.setPageSize(QPageSize{QSizeF{s.x,s.y}, QPageSize::Millimeter});
-#else
-        printer.setPaperSize(QSizeF{s.x,s.y}, QPrinter::Millimeter);
-#endif
-    } else {
-        printer.setPageSize(paperSize);
-    }
-
-#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
-    printer.setPageOrientation(landscape ? QPageLayout::Landscape : QPageLayout::Portrait);
-#else
-    printer.setOrientation(landscape ? QPrinter::Landscape : QPrinter::Portrait);
-#endif
-
-    printer.setOutputFileName(params.outFile);
-    printer.setOutputFormat(QPrinter::PdfFormat);
-    printer.setResolution(params.resolution);
-    printer.setFullPage(true);
-
-    if (params.grayscale)
-        printer.setColorMode(QPrinter::GrayScale);
-    else
-        printer.setColorMode(QPrinter::Color);
-}
-
-
-static void drawPage(RS_Graphic* graphic, QPrinter& printer,
-    RS_PainterQt& painter)
-{
-    double printerFx = (double)printer.width() / printer.widthMM();
-    double printerFy = (double)printer.height() / printer.heightMM();
-
-    double marginLeft = graphic->getMarginLeft();
-    double marginTop = graphic-> getMarginTop();
-    double marginRight = graphic->getMarginRight();
-    double marginBottom = graphic->getMarginBottom();
-
-    painter.setClipRect(marginLeft * printerFx, marginTop * printerFy,
-                        printer.width() - (marginLeft + marginRight) * printerFx,
-                        printer.height() - (marginTop + marginBottom) * printerFy);
-
-    RS_StaticGraphicView gv(printer.width(), printer.height(), &painter);
-    gv.setPrinting(true);
-    gv.setBorders(0,0,0,0);
-
-    double fx = printerFx * RS_Units::getFactorToMM(graphic->getUnit());
-    double fy = printerFy * RS_Units::getFactorToMM(graphic->getUnit());
-
-    double f = (fx + fy) / 2.0;
-
-    double scale = graphic->getPaperScale();
-
-    gv.setOffset((int)(graphic->getPaperInsertionBase().x * f),
-                 (int)(graphic->getPaperInsertionBase().y * f));
-    gv.setFactor(f*scale);
-    gv.setContainer(graphic);
-
-    double baseX = graphic->getPaperInsertionBase().x;
-    double baseY = graphic->getPaperInsertionBase().y;
-    int numX = graphic->getPagesNumHoriz();
-    int numY = graphic->getPagesNumVert();
-    RS_Vector printArea = graphic->getPrintAreaSize(false);
-
-    for (int pY = 0; pY < numY; pY++) {
-        double offsetY = printArea.y * pY;
-        for (int pX = 0; pX < numX; pX++) {
-            double offsetX = printArea.x * pX;
-            // First page is created automatically.
-            // Extra pages must be created manually.
-            if (pX > 0 || pY > 0) printer.newPage();
-            gv.setOffset((int)((baseX - offsetX) * f),
-                         (int)((baseY - offsetY) * f));
-            gv.drawEntity(&painter, graphic );
-        }
-    }
 }
