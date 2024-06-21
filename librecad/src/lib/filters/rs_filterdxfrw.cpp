@@ -608,8 +608,7 @@ void RS_FilterDXFRW::addPolyline(const DRW_Polyline& data) {
 
     for (auto const& v: data.vertlist)
         verList.emplace_back(
-                    std::make_pair(RS_Vector{v->basePoint.x, v->basePoint.y},
-                                   v->bulge));
+            std::make_pair(RS_Vector{v->basePoint.x, v->basePoint.y, v->basePoint.z}, v->bulge));
 
     polyline->appendVertexs(verList);
 
