@@ -37,7 +37,18 @@
 
 #include "vec_converter_loop.h"
 
+struct PolylineData
+{
+    bool visible;
+    unsigned long int id;
+    unsigned int count;
+    unsigned int countDeep;
+    bool closed;
+};
+
 static bool openDocAndSetGraphic(RS_Document **, RS_Graphic **, const QString &);
+void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &, const QString &);
+bool deserializePolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &, const QString &);
 
 void VecConverterLoop::run()
 {
@@ -64,15 +75,21 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
     if (!openDocAndSetGraphic(&doc, &graphic, dxfFile))
         return;
 
-    qDebug() << "Printing" << dxfFile << "to" << params.outFile << ">>>>";
-
-    QList<QList<QVector3D>> allPolylinesPoints;
+    QList<std::pair<PolylineData, QList<QVector3D>>> allPolylinesPoints;
 
     auto processEntity = [&allPolylinesPoints, &graphic](RS_Entity *entity,
                                                          auto &&processEntityRef) -> void {
         if (entity->rtti() == RS2::EntityPolyline) {
             RS_Polyline *polyline = static_cast<RS_Polyline *>(entity);
             QList<QVector3D> polylinePoints;
+            PolylineData polylineData;
+
+            polylineData.visible = polyline->isVisible();
+            polylineData.id = polyline->getId();
+            polylineData.count = polyline->count();
+            polylineData.countDeep = polyline->countDeep();
+            polylineData.closed = polyline->isClosed();
+
             for (const RS_Entity *e : *polyline) {
                 if (e->rtti() == RS2::EntityLine) {
                     RS_Vector startPoint = e->getStartpoint();
@@ -82,7 +99,15 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
                              << "(not an EntityLine) in EntityPolyline";
                 }
             }
-            allPolylinesPoints.append(polylinePoints);
+
+            const RS_Entity *lastEntity = polyline->last();
+            if (lastEntity && lastEntity->rtti() == RS2::EntityLine) {
+                RS_Vector endPoint = lastEntity->getEndpoint();
+                polylinePoints.append(QVector3D(endPoint.x, endPoint.y, endPoint.z));
+            }
+
+            allPolylinesPoints.append(std::make_pair(polylineData, polylinePoints));
+
         } else if (entity->rtti() == RS2::EntityInsert) {
             RS_Block *block = graphic->getBlockList()->find(
                 static_cast<RS_Insert *>(entity)->getName());
@@ -101,21 +126,135 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
         processEntity(entity, processEntity);
     }
 
-    // DEBUG
     int polylineCount = 0;
+    for (const auto &polylinePair : allPolylinesPoints) {
+        const PolylineData &polylineData = polylinePair.first;
+        const QList<QVector3D> &polylinePoints = polylinePair.second;
 
-    for (const auto &polylinePoints : allPolylinesPoints) {
         qDebug() << "Polyline no=" << polylineCount++ << ":";
+        qDebug() << "Visible:" << (polylineData.visible ? "true" : "false");
+        qDebug() << "ID:" << polylineData.id;
+        qDebug() << "Count:" << polylineData.count;
+        qDebug() << "Count Deep:" << polylineData.countDeep;
+        qDebug() << "Closed:" << (polylineData.closed ? "true" : "false");
+
         for (const auto &point : polylinePoints) {
             qDebug() << point;
         }
+
+        qDebug() << "";
     }
+
+    qDebug() << "Printing" << dxfFile << "to" << params.outFile << ">>>>";
+
+    serializePolylines(allPolylinesPoints, params.outFile);
 
     qDebug() << "Printing" << dxfFile << "to" << params.outFile << "DONE";
 
-    // TODO exchange data with shared memory buffer here, or use .vec
+    qDebug() << "Reading" << params.outFile << ">>>>";
+
+    QList<std::pair<PolylineData, QList<QVector3D>>> resultPolylinesPoints;
+    deserializePolylines(resultPolylinesPoints, params.outFile);
+
+    polylineCount = 0;
+    for (const auto &polylinePair : resultPolylinesPoints) {
+        const PolylineData &polylineData = polylinePair.first;
+        const QList<QVector3D> &polylinePoints = polylinePair.second;
+
+        qDebug() << "Polyline no=" << polylineCount++ << ":";
+        qDebug() << "Visible:" << (polylineData.visible ? "true" : "false");
+        qDebug() << "ID:" << polylineData.id;
+        qDebug() << "Count:" << polylineData.count;
+        qDebug() << "Count Deep:" << polylineData.countDeep;
+        qDebug() << "Closed:" << (polylineData.closed ? "true" : "false");
+
+        for (const auto &point : polylinePoints) {
+            qDebug() << point;
+        }
+
+        qDebug() << "";
+    }
+
+    qDebug() << "Reading" << params.outFile << "DONE";
 
     delete doc;
+}
+
+void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &allPolylinesPoints,
+                        const QString &filename)
+{
+    QFile file(filename);
+    if (!file.open(QIODevice::WriteOnly)) {
+        qDebug() << "Failed to open file for writing:" << filename;
+        return;
+    }
+
+    QDataStream out(&file);
+    out.setVersion(QDataStream::Qt_6_6);
+
+    out << static_cast<quint32>(allPolylinesPoints.count());
+    for (const auto &polylinePair : allPolylinesPoints) {
+        const PolylineData &polylineData = polylinePair.first;
+        const QList<QVector3D> &polylinePoints = polylinePair.second;
+
+        out << polylineData.visible;
+        out << static_cast<quint64>(polylineData.id);
+        out << polylineData.count;
+        out << polylineData.countDeep;
+        out << polylineData.closed;
+
+        out << static_cast<quint32>(polylinePoints.size());
+
+        for (const auto &point : polylinePoints) {
+            out << point;
+        }
+    }
+
+    file.close();
+}
+
+bool deserializePolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &outPolylinesPoints,
+                          const QString &filename)
+{
+    QFile file(filename);
+
+    if (!file.open(QIODevice::ReadOnly)) {
+        qDebug() << "Failed to open file for reading:" << filename;
+        return false;
+    }
+
+    QDataStream in(&file);
+    in.setVersion(QDataStream::Qt_6_6);
+
+    quint32 totalElements;
+    in >> totalElements;
+
+    outPolylinesPoints.reserve(totalElements);
+
+    for (quint32 i = 0; i < totalElements; ++i) {
+        PolylineData polylineData;
+        quint64 id;
+        in >> polylineData.visible;
+        in >> id;
+        polylineData.id = static_cast<unsigned long int>(id);
+        in >> polylineData.count;
+        in >> polylineData.countDeep;
+        in >> polylineData.closed;
+
+        quint32 numPoints;
+        in >> numPoints;
+
+        QList<QVector3D> polylinePoints;
+        polylinePoints.resize(numPoints);
+        for (quint32 j = 0; j < numPoints; ++j) {
+            in >> polylinePoints[j];
+        }
+
+        outPolylinesPoints.append({polylineData, polylinePoints});
+    }
+
+    file.close();
+    return true;
 }
 
 void VecConverterLoop::convertManyDxfToOneVec() {
