@@ -39,6 +39,9 @@
 
 struct PolylineData
 {
+    //double bX;
+    //double bY;
+    //double bZ;
     bool visible;
     unsigned long int id;
     unsigned int count;
@@ -124,6 +127,9 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
                 RS_Vector newInsertionPoint = insert->getInsertionPoint();
                 RS_Vector newScaleFactor = insert->getScale();
                 double newRotation = insert->getAngle();
+
+                qDebug() << "insert z" << newInsertionPoint.z;
+                qDebug() << "block z" << block->getBasePoint().z;
 
                 newInsertionPoint = newInsertionPoint * scaleFactor;
                 newInsertionPoint.rotate(rotation);
