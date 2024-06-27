@@ -336,7 +336,7 @@ void RS_FilterDXFRW::addBlock(const DRW_Block& data) {
 // Prevent special blocks (paper_space, model_space) from being added:
     if (mid.toLower() != "paper_space" && mid.toLower() != "model_space") {
 
-            RS_Vector bp(data.basePoint.x, data.basePoint.y);
+            RS_Vector bp(data.basePoint.x, data.basePoint.y, data.basePoint.z);
             RS_Block* block =
                 new RS_Block(graphic, RS_BlockData(name, bp, false ));
             //block->setFlags(flags);
@@ -692,8 +692,8 @@ void RS_FilterDXFRW::addInsert(const DRW_Insert& data) {
 
     RS_DEBUG->print("RS_FilterDXF::addInsert");
 
-    RS_Vector ip(data.basePoint.x, data.basePoint.y);
-    RS_Vector sc(data.xscale, data.yscale);
+    RS_Vector ip(data.basePoint.x, data.basePoint.y, data.basePoint.z);
+    RS_Vector sc(data.xscale, data.yscale, data.zscale);
     RS_Vector sp(data.colspace, data.rowspace);
 
     //cout << "Insert: " << name << " " << ip << " " << cols << "/" << rows << endl;
