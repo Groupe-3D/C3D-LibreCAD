@@ -78,6 +78,9 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
     QList<std::pair<PolylineData, QList<QVector3D>>> allPolylinesPoints;
 
     auto processEntity = [&allPolylinesPoints, &graphic](RS_Entity *entity,
+                                                         const RS_Vector& insertionPoint,
+                                                         const RS_Vector& scaleFactor,
+                                                         double rotation,
                                                          auto &&processEntityRef) -> void {
         if (entity->rtti() == RS2::EntityPolyline) {
             RS_Polyline *polyline = static_cast<RS_Polyline *>(entity);
@@ -93,6 +96,9 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
             for (const RS_Entity *e : *polyline) {
                 if (e->rtti() == RS2::EntityLine) {
                     RS_Vector startPoint = e->getStartpoint();
+                    startPoint = startPoint * scaleFactor;
+                    startPoint.rotate(rotation);
+                    startPoint += insertionPoint;
                     polylinePoints.append(QVector3D(startPoint.x, startPoint.y, startPoint.z));
                 } else {
                     qDebug() << "Ignore entity with rtti=" << e->rtti()
@@ -103,46 +109,69 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
             const RS_Entity *lastEntity = polyline->last();
             if (lastEntity && lastEntity->rtti() == RS2::EntityLine) {
                 RS_Vector endPoint = lastEntity->getEndpoint();
+                endPoint = endPoint * scaleFactor;
+                endPoint.rotate(rotation);
+                endPoint += insertionPoint;
                 polylinePoints.append(QVector3D(endPoint.x, endPoint.y, endPoint.z));
             }
 
             allPolylinesPoints.append(std::make_pair(polylineData, polylinePoints));
 
         } else if (entity->rtti() == RS2::EntityInsert) {
-            RS_Block *block = graphic->getBlockList()->find(
-                static_cast<RS_Insert *>(entity)->getName());
+            RS_Insert *insert = static_cast<RS_Insert *>(entity);
+            RS_Block *block = graphic->getBlockList()->find(insert->getName());
             if (block) {
+                RS_Vector newInsertionPoint = insert->getInsertionPoint();
+                RS_Vector newScaleFactor = insert->getScale();
+                double newRotation = insert->getAngle();
+
+                newInsertionPoint = newInsertionPoint * scaleFactor;
+                newInsertionPoint.rotate(rotation);
+                newInsertionPoint += insertionPoint;
+
+                newScaleFactor.x *= scaleFactor.x;
+                newScaleFactor.y *= scaleFactor.y;
+
+                newRotation += rotation;
+
                 for (RS_Entity *subEntity : *block) {
-                    processEntityRef(subEntity, processEntityRef);
+                    processEntityRef(subEntity, newInsertionPoint, newScaleFactor, newRotation, processEntityRef);
                 }
             }
+        } else if (entity->rtti() == RS2::EntityLine) {
+
+            QList<QVector3D> linePoints;
+            PolylineData lineData;
+
+            lineData.visible = entity->isVisible();
+            lineData.id = entity->getId();
+            lineData.count = 2;
+            lineData.countDeep = 2;
+            lineData.closed = false;
+
+            RS_Vector startPoint = entity->getStartpoint();
+            RS_Vector endPoint = entity->getEndpoint();
+
+            startPoint = startPoint * scaleFactor;
+            startPoint.rotate(rotation);
+            startPoint += insertionPoint;
+
+            endPoint = endPoint * scaleFactor;
+            endPoint.rotate(rotation);
+            endPoint += insertionPoint;
+
+            linePoints.append(QVector3D(startPoint.x, startPoint.y, startPoint.z));
+            linePoints.append(QVector3D(endPoint.x, endPoint.y, endPoint.z));
+
+            allPolylinesPoints.append(std::make_pair(lineData, linePoints));
         } else {
             qDebug() << "Ignore top level entity with rtti=" << entity->rtti()
-                     << "(not an EntityPolyline)";
+                     << "(not an EntityPolyline, EntityInsert, or EntityLine)";
         }
     };
 
     for (RS_Entity *entity : *graphic) {
-        processEntity(entity, processEntity);
-    }
-
-    int polylineCount = 0;
-    for (const auto &polylinePair : allPolylinesPoints) {
-        const PolylineData &polylineData = polylinePair.first;
-        const QList<QVector3D> &polylinePoints = polylinePair.second;
-
-        qDebug() << "Polyline no=" << polylineCount++ << ":";
-        qDebug() << "Visible:" << (polylineData.visible ? "true" : "false");
-        qDebug() << "ID:" << polylineData.id;
-        qDebug() << "Count:" << polylineData.count;
-        qDebug() << "Count Deep:" << polylineData.countDeep;
-        qDebug() << "Closed:" << (polylineData.closed ? "true" : "false");
-
-        for (const auto &point : polylinePoints) {
-            qDebug() << point;
-        }
-
-        qDebug() << "";
+        processEntity(entity, RS_Vector(0, 0), RS_Vector(1, 1), 0, processEntity);
     }
 
     qDebug() << "Printing" << dxfFile << "to" << params.outFile << ">>>>";
@@ -156,7 +185,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
     QList<std::pair<PolylineData, QList<QVector3D>>> resultPolylinesPoints;
     deserializePolylines(resultPolylinesPoints, params.outFile);
 
-    polylineCount = 0;
+    int polylineCount = 0;
     for (const auto &polylinePair : resultPolylinesPoints) {
         const PolylineData &polylineData = polylinePair.first;
         const QList<QVector3D> &polylinePoints = polylinePair.second;
