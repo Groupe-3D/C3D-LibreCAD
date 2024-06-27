@@ -27,6 +27,8 @@
 #include <QVector3D>
 #include <QtCore>
 
+#include <iostream>
+
 #include "rs.h"
 #include "rs_block.h"
 #include "rs_blocklist.h"
@@ -190,7 +192,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
 
     qDebug() << "Printing" << dxfFile << "to" << params.outFile << "DONE";
 
-    qDebug() << "Reading" << params.outFile << ">>>>";
+    std::cout << "READING" << params.outFile.toStdString();
 
     QList<std::pair<PolylineData, QList<QVector3D>>> resultPolylinesPoints;
     deserializePolylines(resultPolylinesPoints, params.outFile);
@@ -200,21 +202,21 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
         const PolylineData &polylineData = polylinePair.first;
         const QList<QVector3D> &polylinePoints = polylinePair.second;
 
-        qDebug() << "Polyline no=" << polylineCount++ << ":";
-        qDebug() << "Visible:" << (polylineData.visible ? "true" : "false");
-        qDebug() << "ID:" << polylineData.id;
-        qDebug() << "Count:" << polylineData.count;
-        qDebug() << "Count Deep:" << polylineData.countDeep;
-        qDebug() << "Closed:" << (polylineData.closed ? "true" : "false");
+        std::cout << "Polyline no=" << polylineCount++ << ":" << std::endl;
+        std::cout << "Visible:" << (polylineData.visible ? "true" : "false") << std::endl;
+        std::cout << "ID:" << polylineData.id << std::endl;
+        std::cout << "Count:" << polylineData.count << std::endl;
+        std::cout << "Count Deep:" << polylineData.countDeep << std::endl;
+        std::cout << "Closed:" << (polylineData.closed ? "true" : "false") << std::endl;
 
         for (const auto &point : polylinePoints) {
-            qDebug() << point;
+            std::cout << point.x() << " " << point.y() << " " << point.z() << std::endl;
         }
 
-        qDebug() << "";
+        std::cout << std::endl;
     }
 
-    qDebug() << "Reading" << params.outFile << "DONE";
+    std::cout << "READING DONE" << std::endl;
 
     delete doc;
 }
