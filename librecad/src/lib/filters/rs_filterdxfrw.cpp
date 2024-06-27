@@ -401,8 +401,8 @@ void RS_FilterDXFRW::addPoint(const DRW_Point& data) {
 void RS_FilterDXFRW::addLine(const DRW_Line& data) {
     RS_DEBUG->print("RS_FilterDXF::addLine");
 
-    RS_Vector v1(data.basePoint.x, data.basePoint.y);
-    RS_Vector v2(data.secPoint.x, data.secPoint.y);
+    RS_Vector v1(data.basePoint.x, data.basePoint.y, data.basePoint.z);
+    RS_Vector v2(data.secPoint.x, data.secPoint.y, data.secPoint.z);
 
     RS_DEBUG->print("RS_FilterDXF::addLine: create line");
 

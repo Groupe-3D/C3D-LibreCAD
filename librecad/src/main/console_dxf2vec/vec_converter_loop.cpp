@@ -39,9 +39,6 @@
 
 struct PolylineData
 {
-    //double bX;
-    //double bY;
-    //double bZ;
     bool visible;
     unsigned long int id;
     unsigned int count;
@@ -82,9 +79,14 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
 
     auto processEntity = [&allPolylinesPoints, &graphic](RS_Entity *entity,
                                                          const RS_Vector& insertionPoint,
-                                                         const RS_Vector& scaleFactor,
+                                                         const RS_Vector& scaleFactorInput,
                                                          double rotation,
                                                          auto &&processEntityRef) -> void {
+        RS_Vector scaleFactor = scaleFactorInput;
+        if (scaleFactor.z == 0) {
+            scaleFactor.z = 1;
+        }
+
         if (entity->rtti() == RS2::EntityPolyline) {
             RS_Polyline *polyline = static_cast<RS_Polyline *>(entity);
             QList<QVector3D> polylinePoints;
@@ -128,8 +130,9 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
                 RS_Vector newScaleFactor = insert->getScale();
                 double newRotation = insert->getAngle();
 
-                qDebug() << "insert z" << newInsertionPoint.z;
-                qDebug() << "block z" << block->getBasePoint().z;
+                if (newScaleFactor.z == 0) {
+                    newScaleFactor.z = 1;
+                }
 
                 newInsertionPoint = newInsertionPoint * scaleFactor;
                 newInsertionPoint.rotate(rotation);
@@ -137,6 +140,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
 
                 newScaleFactor.x *= scaleFactor.x;
                 newScaleFactor.y *= scaleFactor.y;
+                newScaleFactor.z *= scaleFactor.z;
 
                 newRotation += rotation;
 
@@ -177,7 +181,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
     };
 
     for (RS_Entity *entity : *graphic) {
-        processEntity(entity, RS_Vector(0, 0), RS_Vector(1, 1), 0, processEntity);
+        processEntity(entity, RS_Vector(0, 0, 0), RS_Vector(1, 1, 1), 0, processEntity);
     }
 
     qDebug() << "Printing" << dxfFile << "to" << params.outFile << ">>>>";
