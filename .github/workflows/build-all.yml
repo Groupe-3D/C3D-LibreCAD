@@ -1,4 +1,4 @@
-name: Build Slicer LibreCAD
+name: Build LibreCAD
 on:
   push:
     branches:
@@ -18,7 +18,7 @@ jobs:
       - name: Install Qt6
         uses: jurplel/install-qt-action@v3
         with:
-          version: '6.6.*'
+          version: '6.7.1'
 
       - name: Qt6 path
         run: |
@@ -31,16 +31,16 @@ jobs:
           sudo apt-get -qq install qtchooser libgl-dev libxcb-cursor0 libmuparser-dev libboost-dev librsvg2-bin libfreetype6-dev libicu-dev pkg-config libfuse2
           sudo ln -snf /usr/lib/x86_64-linux-gnu/qtchooser/qt5.conf /usr/lib/x86_64-linux-gnu/qtchooser/default.conf
           sudo rm -rf /usr/local/lib/android
-          find /home/runner/work/LibreCAD/Qt/6.6.3 -iname "libqt*svg*"
+          find /home/runner/work/LibreCAD/Qt/6.7.1 -iname "libqt*svg*"
 
       - name: Install Clang
         run: |
-          sudo apt-get -qq install clang-10 clang-tools-10
+          sudo apt-get -qq install clang-11 clang-tools-11
 
       - name: Build and analyze
         run: |
           export CC=g++
-          export ANALYZE="scan-build-10 -o out --use-cc=/usr/bin/clang++ --use-analyzer=/usr/bin/clang++ "
+          export ANALYZE="scan-build-11 -o out --use-cc=/usr/bin/clang++ --use-analyzer=/usr/bin/clang++ "
           ${ANALYZE}qmake6 -r librecad.pro CONFIG+=debug_and_release PREFIX=/usr
           ${ANALYZE}make release -j$(nproc)
 
@@ -53,10 +53,10 @@ jobs:
           git config --global init.defaultBranch gh-pages
           git init
           git add .
-          git commit -m "latest analyzer report"
+          git commit -m "Latest static analysis report"
 
       - name: Push changes
-        if: github.repository_owner == 'LibreCAD'
+        if: github.repository_owner == 'Constructions-3D'
         uses: ad-m/github-push-action@master
         with:
           repository: ${{ github.repository_owner }}/LibreCAD_static-analysis
@@ -111,7 +111,7 @@ jobs:
       - name: Install Qt6
         uses: jurplel/install-qt-action@v3
         with:
-          version: '6.6.*'
+          version: '6.7.1'
 
       - name: Install boost dependencies
         run: |
@@ -156,7 +156,7 @@ jobs:
       - name: Install Qt6
         uses: jurplel/install-qt-action@v3
         with:
-          version: '6.6.*'
+          version: '6.7.1'
           host: 'windows'
           arch: 'win64_mingw'
           target: 'desktop'
@@ -204,7 +204,7 @@ jobs:
           dir ..
           echo.
           dir ..\boost
-          dir ..\Qt\6.6.3\mingw_64\bin
+          dir ..\Qt\6.7.1\mingw_64\bin
           echo.
           dir /b /s ..\Qt
           where qmake6.exe
@@ -214,7 +214,7 @@ jobs:
 
       - name: Build
         run: |
-          set PATH=${{ github.workspace }}\Tools\mingw1120_64\bin;${{ github.workspace }}\Qt\6.6.3\mingw_64\bin;%PATH%
+          set PATH=${{ github.workspace }}\Tools\mingw1120_64\bin;${{ github.workspace }}\Qt\6.7.1\mingw_64\bin;%PATH%
           copy CI\custom-win.pri custom.pri
           copy CI\custom-win-x64.nsh scripts\postprocess-windows\custom.nsh
           echo SET:
@@ -253,7 +253,7 @@ jobs:
           fetch-depth: 0
 
       - name: Delete existing
-        run: gh release delete "2.2.2_alpha-latest" -y
+        run: gh release delete "librecad-slicer-latest" -y
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -264,7 +264,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: "Continuous Build: latest development"
-          tag_name: "slicer-latest"
+          tag_name: "librecad-slicer-latest"
           prerelease: true
           draft: false
           files: |
