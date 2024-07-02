@@ -9,14 +9,7 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       output1: ${{ steps.artifact-upload-step.outputs.artifact-id }}
-    steps:
-      - name: Generate token
-        id: generate_token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.G3D_OPERATIONS_APP_ID }}
-          private-key: ${{ secrets.G3D_OPERATIONS_APP_PEM }}
-          
+    steps:         
       - name: Checkout code
         uses: actions/checkout@main
         with:
@@ -57,7 +50,6 @@ jobs:
           find . -mindepth 2 -type f -print -exec mv {} . \;
           git config --global user.name "${{ secrets.G3D_OPERATIONS_BOT_NAME }}"
           git config --global user.email "${{ secrets.G3D_OPERATIONS_BOT_EMAIL }}"
-          git remote set-url origin "https://x-access-token:${{ steps.generate_token.outputs.token }}@github.com/${{ github.repository }}"
           git config --global init.defaultBranch gh-pages
           git init
           git add .
@@ -68,7 +60,7 @@ jobs:
         uses: ad-m/github-push-action@master
         with:
           repository: ${{ github.repository_owner }}/LibreCAD_static-analysis
-          github_token: ${{ steps.generate_token.outputs.token }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: gh-pages
           force: true
           directory: out
@@ -255,13 +247,6 @@ jobs:
     needs: [BuildLinux, BuildMacOS, BuildWindows64]
     runs-on: ubuntu-latest
     steps:
-      - name: Generate token
-        id: generate_token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.G3D_OPERATIONS_APP_ID }}
-          private-key: ${{ secrets.G3D_OPERATIONS_APP_PEM }}
-          
       - name: Checkout code
         uses: actions/checkout@main
         with:
@@ -270,7 +255,7 @@ jobs:
       - name: Delete existing
         run: gh release delete "2.2.2_alpha-latest" -y
         env:
-          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fetch artifacts
         uses: actions/download-artifact@main
