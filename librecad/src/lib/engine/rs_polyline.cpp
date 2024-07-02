@@ -28,13 +28,12 @@
 #include<cmath>
 #include<iostream>
 
+#include <QObject>
 
-#include "rs_line.h"
-#include "rs_debug.h"
 #include "qc_applicationwindow.h"
-
 #include "rs_arc.h"
 #include "rs_debug.h"
+#include "rs_dialogfactory.h"
 #include "rs_document.h"
 #include "rs_graphicview.h"
 #include "rs_information.h"
@@ -529,8 +528,7 @@ bool RS_Polyline::offset(const RS_Vector& coord, const double& distance){
     //        return true;
 
     RS_Polyline* pnew= static_cast<RS_Polyline*>(clone());
-    int i;
-    i=indexNearest;
+    int i=indexNearest;
     int previousIndex(i);
     pnew->entityAt(i)->offset(coord,distance);
     RS_Vector vp;
@@ -661,10 +659,21 @@ void RS_Polyline::rotate(const RS_Vector& center, const RS_Vector& angleVector) 
 
 
 void RS_Polyline::scale(const RS_Vector& center, const RS_Vector& factor) {
+
+    if (containsArc() && !RS_Math::equal(factor.x, factor.y)) {
+        RS_DIALOGFACTORY->commandMessage(QObject::tr("Polyline contains arc segments, and scaling by different xy-factors will generate incorrect results"));
+    }
     RS_EntityContainer::scale(center, factor);
     data.startpoint.scale(center, factor);
     data.endpoint.scale(center, factor);
     calculateBorders();
+}
+
+bool RS_Polyline::containsArc() const
+{
+    return std::any_of(cbegin(), cend(), [](const RS_Entity* entity) {
+        return entity->rtti() == RS2::EntityArc;
+    });
 }
 
 
