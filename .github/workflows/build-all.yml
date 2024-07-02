@@ -54,7 +54,7 @@ jobs:
           git init
           git add .
           git commit -m "Latest static analysis report"
-          git remote set-url origin_report "https://x-access-token:${{ secrets.C3D_SOFTWARE_PAT }}@github.com/Constructions-3D/LibreCAD_static-analysis"
+          git remote add origin_report "https://x-access-token:${{ secrets.C3D_SOFTWARE_PAT }}@github.com/Constructions-3D/LibreCAD_static-analysis"
           git push --force origin_report gh-pages
 
 #      - name: Push changes
