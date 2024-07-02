@@ -44,7 +44,7 @@ jobs:
           ${ANALYZE}qmake6 -r librecad.pro CONFIG+=debug_and_release PREFIX=/usr
           ${ANALYZE}make release -j$(nproc)
 
-      - name: Create report repository
+      - name: Create report repository and push
         run: |
           cd out
           find . -mindepth 2 -type f -print -exec mv {} . \;
@@ -54,16 +54,18 @@ jobs:
           git init
           git add .
           git commit -m "Latest static analysis report"
+          git remote set-url origin_report "https://x-access-token:${{ secrets.C3D_SOFTWARE_PAT }}@github.com/Constructions-3D/LibreCAD_static-analysis"
+          git push --force origin_report gh-pages
 
-      - name: Push changes
-        if: github.repository_owner == 'Constructions-3D'
-        uses: ad-m/github-push-action@master
-        with:
-          repository: ${{ github.repository_owner }}/LibreCAD_static-analysis
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: gh-pages
-          force: true
-          directory: out
+#      - name: Push changes
+#        if: github.repository_owner == 'Constructions-3D'
+#        uses: ad-m/github-push-action@master
+#        with:
+#          repository: ${{ github.repository_owner }}/LibreCAD_static-analysis
+#          github_token: ${{ secrets.GITHUB_TOKEN }}
+#          branch: gh-pages
+#          force: true
+#          directory: out
 
       - name: Create AppImage
         run: |
