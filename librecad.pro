@@ -8,8 +8,8 @@ SUBDIRS     = \
     tools
 
 # c++17 is now obligatory for LibreCAD
-message(We will be using CPP20 features)
-QMAKE_CXXFLAGS += -O2 -std=c++20
+message(We will be using CPP17 features)
+QMAKE_CXXFLAGS += -O2 -std=c++17
 exists(custom.pro):include( custom.pro )
 
 OTHER_FILES = \

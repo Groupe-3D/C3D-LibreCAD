@@ -2,8 +2,7 @@ name: Continuous build
 on:
   push:
     branches:
-      - master
-      - 2.2.1
+      - slicer
 
 jobs:
   BuildLinux:
