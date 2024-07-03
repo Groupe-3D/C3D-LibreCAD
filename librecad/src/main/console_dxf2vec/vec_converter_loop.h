@@ -28,9 +28,6 @@
 #include <QtCore>
 #include <QPrinter>
 
-#include "rs_vector.h"
-
-
 // Precision of 1 means TODO
 struct VecConverterParams {
     QStringList dxfFiles;
