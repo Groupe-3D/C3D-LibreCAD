@@ -38,14 +38,16 @@
 
 #include "vec_converter_loop.h"
 
+#define DXF2VEC_MAGIC_NUM 69420
+
 struct alignas(16) PolylineData
 {
-    bool visible;
-    bool closed;
     quint32 id;
     qint32 color;
-    quint16 count;
-    quint16 count_deep;
+    quint32 count;
+    qint16 padding;
+    bool visible;
+    bool closed;
 };
 
 static bool openDocAndSetGraphic(RS_Document **, RS_Graphic **, const QString &);
@@ -93,12 +95,12 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
             QList<QVector3D> polylinePoints;
             PolylineData polylineData;
 
-            polylineData.visible = polyline->isVisible();
             polylineData.id = polyline->getId();
-            polylineData.count = polyline->count();
-            polylineData.count_deep = polyline->countDeep();
-            polylineData.closed = polyline->isClosed();
             polylineData.color = polyline->getPen().getColor().toIntColor();
+            polylineData.count = polyline->count();
+            polylineData.padding = 0;
+            polylineData.visible = polyline->isVisible();
+            polylineData.closed = polyline->isClosed();
 
             for (const RS_Entity *e : *polyline) {
                 if (e->rtti() == RS2::EntityLine) {
@@ -155,12 +157,12 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
             QList<QVector3D> linePoints;
             PolylineData lineData;
 
-            lineData.visible = entity->isVisible();
             lineData.id = entity->getId();
-            lineData.count = 2;
-            lineData.count_deep = 2;
-            lineData.closed = false;
             lineData.color = -1;
+            lineData.count = 2;
+            lineData.padding = 0;
+            lineData.visible = entity->isVisible();
+            lineData.closed = false;
 
             RS_Vector startPoint = entity->getStartpoint();
             RS_Vector endPoint = entity->getEndpoint();
@@ -208,19 +210,19 @@ void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &
     QDataStream out(&file);
     out.setVersion(QDataStream::Qt_6_6);
 
+    out << static_cast<quint32>(DXF2VEC_MAGIC_NUM);
     out << static_cast<quint32>(allPolylinesPoints.count());
+
     for (const auto &polylinePair : allPolylinesPoints) {
         const PolylineData &polylineData = polylinePair.first;
         const QList<QVector3D> &polylinePoints = polylinePair.second;
 
-        out << polylineData.visible;
-        out << polylineData.closed;
         out << polylineData.id;
         out << polylineData.color;
         out << polylineData.count;
-        out << polylineData.count_deep;
-
-        out << static_cast<quint32>(polylinePoints.size());
+        out << polylineData.padding;
+        out << polylineData.visible;
+        out << polylineData.closed;
 
         for (const auto &point : polylinePoints) {
             out << point;
