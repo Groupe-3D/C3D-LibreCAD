@@ -106,3 +106,4 @@ core.*
 *.vcxproj.filters
 *.sln
 /cmake-build-debug/
+cad/
