@@ -42,13 +42,15 @@
 
 struct alignas(16) PolylineData
 {
-    quint32 id;
-    qint32 color;
-    quint32 count;
-    qint16 padding;
-    bool visible;
-    bool closed;
+    quint32 id = 0;
+    qint32 color = 0;
+    quint32 count = 0;
+    qint16 padding = 0;
+    bool visible = false;
+    bool closed = false;
 };
+
+void __debug(QString);
 
 static bool openDocAndSetGraphic(RS_Document **, RS_Graphic **, const QString &);
 void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &, const QString &);
@@ -70,7 +72,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
 {
     QFileInfo dxfFileInfo(dxfFile);
     params.outFile = (params.outDir.isEmpty() ? dxfFileInfo.path() : params.outDir) + "/"
-                     + dxfFileInfo.completeBaseName() + ".vec";
+            + dxfFileInfo.completeBaseName() + ".vec";
 
     RS_Document *doc;
     RS_Graphic *graphic;
@@ -100,6 +102,13 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
             polylineData.count = polyline->count();
             polylineData.padding = 0;
             polylineData.visible = polyline->isVisible();
+            polylineData.closed = polyline->isClosed();
+
+            qDebug() << polylineData.id << polyline->getId();
+            qDebug() << polylineData.color << polyline->getPen().getColor().toIntColor();
+            qDebug() << polylineData.count << polyline->count();
+            qDebug() << polylineData.padding << 0;
+            qDebug() << polylineData.visible << polyline->isVisible();
             polylineData.closed = polyline->isClosed();
 
             for (const RS_Entity *e : *polyline) {
@@ -158,8 +167,8 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
             PolylineData lineData;
 
             lineData.id = entity->getId();
-            lineData.color = -1;
-            lineData.count = 2;
+            lineData.color = 0;
+            lineData.count = 42;
             lineData.padding = 0;
             lineData.visible = entity->isVisible();
             lineData.closed = false;
@@ -193,6 +202,8 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
 
     serializePolylines(allPolylinesPoints, params.outFile);
 
+    __debug(params.outFile);
+
     qDebug() << "Printing" << dxfFile << "to" << params.outFile << "DONE";
 
     delete doc;
@@ -209,9 +220,10 @@ void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &
 
     QDataStream out(&file);
     out.setVersion(QDataStream::Qt_6_6);
+    out.setByteOrder(QDataStream::BigEndian);
 
     out << static_cast<quint32>(DXF2VEC_MAGIC_NUM);
-    out << static_cast<quint32>(allPolylinesPoints.count());
+    out << static_cast<quint32>(allPolylinesPoints.size());
 
     for (const auto &polylinePair : allPolylinesPoints) {
         const PolylineData &polylineData = polylinePair.first;
@@ -288,4 +300,102 @@ static bool openDocAndSetGraphic(RS_Document** doc, RS_Graphic** graphic,
     }
 
     return true;
+}
+
+bool deserializePolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &outPolylinesPoints,
+                          const QString &filename)
+{
+    QFile file(filename);
+
+    if (!file.open(QIODevice::ReadOnly)) {
+        qDebug() << "Failed to open file for reading:" << filename;
+        return false;
+    }
+
+    QDataStream in(&file);
+    in.setVersion(QDataStream::Qt_6_6);
+    in.setByteOrder(QDataStream::BigEndian);
+
+    quint32 paddingMagicHeader;
+    in >> paddingMagicHeader;
+
+    if (paddingMagicHeader != DXF2VEC_MAGIC_NUM) {
+        qFatal() << "Error: This file is not a well formatted VEC file";
+        return false;
+    }
+
+    quint32 totalElements;
+    in >> totalElements;
+
+    outPolylinesPoints.reserve(totalElements);
+
+    for (quint32 i = 0; i < totalElements; ++i) {
+        PolylineData polylineData;
+
+        in >> polylineData.id;
+        in >> polylineData.color;
+        in >> polylineData.count;
+        in >> polylineData.padding;
+        in >> polylineData.visible;
+        in >> polylineData.closed;
+
+        quint32 numPoints = polylineData.count;
+
+        QList<QVector3D> polylinePoints;
+        polylinePoints.resize(numPoints);
+        for (quint32 j = 0; j < numPoints; ++j) {
+            in >> polylinePoints[j];
+        }
+
+        outPolylinesPoints.append({ polylineData, polylinePoints });
+    }
+
+    file.close();
+    return true;
+}
+
+QColor fromIntColor(int color)
+{
+    if (color >= 0) {
+        return QColor((color >> 16) & 0xFF, (color >> 8) & 0xFF, (color) & 0xFF);
+    } else if (color == -1) {
+        // RS2::FlagByLayer
+        return QColor(0, 0, 0); // Layer color
+    } else if (color == -2) {
+        // RS2::FlagByBlock
+        return QColor(0, 0, 0); // Block color
+    }
+    return QColor(0, 0, 0); // ¯\_(ツ)_/¯
+}
+
+void __debug(QString filename)
+{
+    QList<std::pair<PolylineData, QList<QVector3D>>> resultPolylinesPoints;
+    deserializePolylines(resultPolylinesPoints, filename);
+
+    quint16 polylineCount = 0;
+    for (const auto &polylinePair : resultPolylinesPoints) {
+        const PolylineData &polylineData = polylinePair.first;
+        const QList<QVector3D> &polylinePoints = polylinePair.second;
+        const QColor colorPoly = fromIntColor(polylineData.color);
+        bool extrude = (colorPoly != QColor("red"));
+
+        qDebug() << "# Polyline n" << polylineCount;
+        qDebug() << "Visible:" << (polylineData.visible ? "true" : "false");
+        qDebug() << "Closed:" << (polylineData.closed ? "true" : "false");
+        qDebug() << "ID:" << polylineData.id;
+        qDebug() << "Color:" << colorPoly << "| Extrude:" << (extrude ? "true" : "false");
+        qDebug() << "Count:" << polylineData.count;
+
+        for (const auto &point : polylinePoints) {
+            // qDebug() << polylineCount << point.x() << point.z() << -point.y() << extrude;
+            qDebug() << QVector3D{ point.x(), point.z(), -point.y() } << polylineData.id
+                     << polylineCount << extrude;
+        }
+        polylineCount++;
+
+        qDebug() << "";
+    }
+
+    qDebug() << "DONE";
 }
