@@ -97,21 +97,17 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
     params.unit = static_cast<qint32>(drawingUnit);
     RS_Units::setCurrentDrawingUnits(drawingUnit);
 
-    double drawingScale = graphic->getPaperScale();
-    params.paperScale = drawingScale;
-
-    auto processEntity = [&allPolylinesPoints, &graphic, drawingUnit,
-                          drawingScale](RS_Entity *entity, const RS_Vector &insertionPoint,
-                                        const RS_Vector &scaleFactorInput, double rotation,
-                                        auto &&processEntityRef) -> void {
+    auto processEntity = [&allPolylinesPoints, &graphic,
+                          drawingUnit](RS_Entity *entity, const RS_Vector &insertionPoint,
+                                       const RS_Vector &scaleFactorInput, double rotation,
+                                       auto &&processEntityRef) -> void {
         RS_Vector scaleFactor = scaleFactorInput;
         if (scaleFactor.z == 0) {
             scaleFactor.z = 1;
         }
 
-        auto convertAndScalePoint = [drawingUnit, drawingScale](const RS_Vector &point) {
+        auto convertAndScalePoint = [drawingUnit](const RS_Vector &point) {
             RS_Vector convertedPoint = RS_Units::convert(point, drawingUnit, RS2::Millimeter);
-            convertedPoint *= drawingScale;
             return convertedPoint;
         };
 
