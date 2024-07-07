@@ -37,15 +37,12 @@ int console_dxf2vec(int argc, char* argv[])
         appDesc << "dxf2vec " + QObject::tr( "usage: ") + librecad + QObject::tr( " [options] <dxf_files>");
     }
     appDesc << "";
-    appDesc << "Turn a bunch of DXF files to VEC file(s).";
+    appDesc << "Turn a DXF file to VEC file.";
     appDesc << "";
-    appDesc << "Examples:";
+    appDesc << "Example:";
     appDesc << "";
-    appDesc << "  " + librecad + QObject::tr( " *.dxf");
-    appDesc << "    " + QObject::tr( "-- make all dxf files to vec files with the same names.");
-    appDesc << "";
-    appDesc << "  " + librecad + QObject::tr( " -o some.vec *.dxf");
-    appDesc << "    " + QObject::tr( "-- print all dxf files to 'some.vec' file.");
+    appDesc << "  " + librecad + QObject::tr(" test.dxf");
+    appDesc << "    " + QObject::tr("-- make test.dxf file to vec file with the same name.");
     parser.setApplicationDescription( appDesc.join( "\n"));
 
     parser.addHelpOption();

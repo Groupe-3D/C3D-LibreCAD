@@ -38,7 +38,8 @@
 
 #include "vec_converter_loop.h"
 
-#define DXF2VEC_MAGIC_NUM 69420
+#define DXF2VEC_MAGIC_NUM 1127433216
+#define DXF2VEC_VERSION 1
 
 struct alignas(16) PolylineData
 {
@@ -50,19 +51,27 @@ struct alignas(16) PolylineData
     bool closed = false;
 };
 
-void __debug(QString);
+// void __debug(QString);
 
 static bool openDocAndSetGraphic(RS_Document **, RS_Graphic **, const QString &);
 void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &, const QString &);
 
 void VecConverterLoop::run()
 {
+    /*
     if (params.outFile.isEmpty()) {
         for (auto &&f : params.dxfFiles) {
             convertOneDxfToOneVec(f);
         }
     } else {
         convertManyDxfToOneVec();
+    }*/
+    if (params.outFile.isEmpty()) {
+        for (auto &&f : params.dxfFiles) {
+            convertOneDxfToOneVec(f);
+        }
+    } else {
+        qWarning() << "Outfile array is empty";
     }
 
     emit finished();
@@ -77,8 +86,9 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
     RS_Document *doc;
     RS_Graphic *graphic;
 
-    if (!openDocAndSetGraphic(&doc, &graphic, dxfFile))
+    if (!openDocAndSetGraphic(&doc, &graphic, dxfFile)) {
         return;
+    }
 
     QList<std::pair<PolylineData, QList<QVector3D>>> allPolylinesPoints;
 
@@ -102,13 +112,6 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
             polylineData.count = polyline->count();
             polylineData.padding = 0;
             polylineData.visible = polyline->isVisible();
-            polylineData.closed = polyline->isClosed();
-
-            qDebug() << polylineData.id << polyline->getId();
-            qDebug() << polylineData.color << polyline->getPen().getColor().toIntColor();
-            qDebug() << polylineData.count << polyline->count();
-            qDebug() << polylineData.padding << 0;
-            qDebug() << polylineData.visible << polyline->isVisible();
             polylineData.closed = polyline->isClosed();
 
             for (const RS_Entity *e : *polyline) {
@@ -138,6 +141,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
         } else if (entity->rtti() == RS2::EntityInsert) {
             RS_Insert *insert = static_cast<RS_Insert *>(entity);
             RS_Block *block = graphic->getBlockList()->find(insert->getName());
+
             if (block) {
                 RS_Vector newInsertionPoint = insert->getInsertionPoint();
                 RS_Vector newScaleFactor = insert->getScale();
@@ -168,7 +172,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
 
             lineData.id = entity->getId();
             lineData.color = 0;
-            lineData.count = 42;
+            lineData.count = 2;
             lineData.padding = 0;
             lineData.visible = entity->isVisible();
             lineData.closed = false;
@@ -198,11 +202,9 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
         processEntity(entity, RS_Vector(0, 0, 0), RS_Vector(1, 1, 1), 0, processEntity);
     }
 
-    qDebug() << "Printing" << dxfFile << "to" << params.outFile << ">>>>";
-
     serializePolylines(allPolylinesPoints, params.outFile);
 
-    __debug(params.outFile);
+    //__debug(params.outFile);
 
     qDebug() << "Printing" << dxfFile << "to" << params.outFile << "DONE";
 
@@ -222,7 +224,7 @@ void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &
     out.setVersion(QDataStream::Qt_6_6);
     out.setByteOrder(QDataStream::BigEndian);
 
-    out << static_cast<quint32>(DXF2VEC_MAGIC_NUM);
+    out << static_cast<quint32>(DXF2VEC_MAGIC_NUM + DXF2VEC_VERSION);
     out << static_cast<quint32>(allPolylinesPoints.size());
 
     for (const auto &polylinePair : allPolylinesPoints) {
@@ -231,7 +233,7 @@ void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &
 
         out << polylineData.id;
         out << polylineData.color;
-        out << polylineData.count;
+        out << static_cast<quint32>(polylinePoints.count());
         out << polylineData.padding;
         out << polylineData.visible;
         out << polylineData.closed;
@@ -244,6 +246,27 @@ void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &
     file.close();
 }
 
+static bool openDocAndSetGraphic(RS_Document **doc, RS_Graphic **graphic, const QString &dxfFile)
+{
+    *doc = new RS_Graphic();
+
+    if (!(*doc)->open(dxfFile, RS2::FormatUnknown)) {
+        qDebug() << "ERROR: Failed to open document" << dxfFile;
+        delete *doc;
+        return false;
+    }
+
+    *graphic = (*doc)->getGraphic();
+    if (*graphic == nullptr) {
+        qDebug() << "ERROR: No graphic in" << dxfFile;
+        delete *doc;
+        return false;
+    }
+
+    return true;
+}
+
+/*
 void VecConverterLoop::convertManyDxfToOneVec() {
 
     struct DxfPage {
@@ -278,28 +301,6 @@ void VecConverterLoop::convertManyDxfToOneVec() {
     }
 
     // TODO
-}
-
-
-static bool openDocAndSetGraphic(RS_Document** doc, RS_Graphic** graphic,
-    const QString& dxfFile)
-{
-    *doc = new RS_Graphic();
-
-    if (!(*doc)->open(dxfFile, RS2::FormatUnknown)) {
-        qDebug() << "ERROR: Failed to open document" << dxfFile;
-        delete *doc;
-        return false;
-    }
-
-    *graphic = (*doc)->getGraphic();
-    if (*graphic == nullptr) {
-        qDebug() << "ERROR: No graphic in" << dxfFile;
-        delete *doc;
-        return false;
-    }
-
-    return true;
 }
 
 bool deserializePolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &outPolylinesPoints,
@@ -399,3 +400,4 @@ void __debug(QString filename)
 
     qDebug() << "DONE";
 }
+*/
