@@ -54,7 +54,8 @@ struct alignas(16) PolylineData
 // void __debug(QString);
 
 static bool openDocAndSetGraphic(RS_Document **, RS_Graphic **, const QString &);
-void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &, const QString &);
+void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &,
+                        const VecConverterParams &);
 
 void VecConverterLoop::run()
 {
@@ -92,15 +93,27 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
 
     QList<std::pair<PolylineData, QList<QVector3D>>> allPolylinesPoints;
 
-    auto processEntity = [&allPolylinesPoints, &graphic](RS_Entity *entity,
-                                                         const RS_Vector& insertionPoint,
-                                                         const RS_Vector& scaleFactorInput,
-                                                         double rotation,
-                                                         auto &&processEntityRef) -> void {
+    RS2::Unit drawingUnit = graphic->getUnit();
+    params.unit = static_cast<qint32>(drawingUnit);
+    RS_Units::setCurrentDrawingUnits(drawingUnit);
+
+    double drawingScale = graphic->getPaperScale();
+    params.paperScale = drawingScale;
+
+    auto processEntity = [&allPolylinesPoints, &graphic, drawingUnit,
+                          drawingScale](RS_Entity *entity, const RS_Vector &insertionPoint,
+                                        const RS_Vector &scaleFactorInput, double rotation,
+                                        auto &&processEntityRef) -> void {
         RS_Vector scaleFactor = scaleFactorInput;
         if (scaleFactor.z == 0) {
             scaleFactor.z = 1;
         }
+
+        auto convertAndScalePoint = [drawingUnit, drawingScale](const RS_Vector &point) {
+            RS_Vector convertedPoint = RS_Units::convert(point, drawingUnit, RS2::Millimeter);
+            convertedPoint *= drawingScale;
+            return convertedPoint;
+        };
 
         if (entity->rtti() == RS2::EntityPolyline) {
             RS_Polyline *polyline = static_cast<RS_Polyline *>(entity);
@@ -117,6 +130,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
             for (const RS_Entity *e : *polyline) {
                 if (e->rtti() == RS2::EntityLine) {
                     RS_Vector startPoint = e->getStartpoint();
+                    startPoint = convertAndScalePoint(startPoint);
                     startPoint = startPoint * scaleFactor;
                     startPoint.rotate(rotation);
                     startPoint += insertionPoint;
@@ -130,6 +144,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
             const RS_Entity *lastEntity = polyline->last();
             if (lastEntity && lastEntity->rtti() == RS2::EntityLine) {
                 RS_Vector endPoint = lastEntity->getEndpoint();
+                endPoint = convertAndScalePoint(endPoint);
                 endPoint = endPoint * scaleFactor;
                 endPoint.rotate(rotation);
                 endPoint += insertionPoint;
@@ -151,6 +166,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
                     newScaleFactor.z = 1;
                 }
 
+                newInsertionPoint = convertAndScalePoint(newInsertionPoint);
                 newInsertionPoint = newInsertionPoint * scaleFactor;
                 newInsertionPoint.rotate(rotation);
                 newInsertionPoint += insertionPoint;
@@ -162,11 +178,11 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
                 newRotation += rotation;
 
                 for (RS_Entity *subEntity : *block) {
-                    processEntityRef(subEntity, newInsertionPoint, newScaleFactor, newRotation, processEntityRef);
+                    processEntityRef(subEntity, newInsertionPoint, newScaleFactor, newRotation,
+                                     processEntityRef);
                 }
             }
         } else if (entity->rtti() == RS2::EntityLine) {
-
             QList<QVector3D> linePoints;
             PolylineData lineData;
 
@@ -180,10 +196,12 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
             RS_Vector startPoint = entity->getStartpoint();
             RS_Vector endPoint = entity->getEndpoint();
 
+            startPoint = convertAndScalePoint(startPoint);
             startPoint = startPoint * scaleFactor;
             startPoint.rotate(rotation);
             startPoint += insertionPoint;
 
+            endPoint = convertAndScalePoint(endPoint);
             endPoint = endPoint * scaleFactor;
             endPoint.rotate(rotation);
             endPoint += insertionPoint;
@@ -202,9 +220,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
         processEntity(entity, RS_Vector(0, 0, 0), RS_Vector(1, 1, 1), 0, processEntity);
     }
 
-    serializePolylines(allPolylinesPoints, params.outFile);
-
-    //__debug(params.outFile);
+    serializePolylines(allPolylinesPoints, params);
 
     qDebug() << "Printing" << dxfFile << "to" << params.outFile << "DONE";
 
@@ -212,8 +228,9 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile)
 }
 
 void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &allPolylinesPoints,
-                        const QString &filename)
+                        const VecConverterParams &params)
 {
+    QString filename = params.outFile;
     QFile file(filename);
     if (!file.open(QIODevice::WriteOnly)) {
         qDebug() << "Failed to open file for writing:" << filename;
@@ -242,6 +259,9 @@ void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &
             out << point;
         }
     }
+
+    out << static_cast<qint32>(params.unit);
+    out << static_cast<qreal>(params.paperScale);
 
     file.close();
 }

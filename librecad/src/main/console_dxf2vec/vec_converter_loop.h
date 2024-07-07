@@ -27,13 +27,16 @@
 
 #include <QtCore>
 #include <QPrinter>
+#include "rs_units.h"
 
 // Precision of 1 means TODO
 struct VecConverterParams {
     QStringList dxfFiles;
     QString outDir;
     QString outFile;
-    unsigned long precision;
+    qint32 precision;
+    qint32 unit;
+    qreal paperScale;
 };
 
 class VecConverterLoop : public QObject {
