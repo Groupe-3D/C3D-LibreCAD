@@ -393,7 +393,7 @@ void QG_CommandEdit::readCommandFile(const QString& path)
         // read lines to buffer and close the file immediately
         QTextStream txt_stream(&file);
         QStringList lines;
-        for(int i=0; i < g_maxLinesToRead; ++i) {
+        for (unsigned int i = 0; i < g_maxLinesToRead; ++i) {
             if (txt_stream.atEnd())
                 break;
             lines << txt_stream.readLine(g_maxLineLength);
