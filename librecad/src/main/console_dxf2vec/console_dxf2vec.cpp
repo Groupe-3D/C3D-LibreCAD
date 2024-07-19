@@ -56,9 +56,18 @@ int console_dxf2vec(int argc, char* argv[])
         QObject::tr( "Target output directory."), "path");
     parser.addOption(outDirOpt);
 
-    QCommandLineOption precisionOpt(QStringList() << "p" << "precision",
-                                 QObject::tr( "Angular accuracy when rasterizing."), "float");
+    QCommandLineOption precisionOpt(QStringList() << "p"
+                                                  << "precision",
+                                    QObject::tr("Set the precision (default is 1.0)."),
+                                    "value",
+                                    "1.0");
     parser.addOption(precisionOpt);
+
+    QCommandLineOption relativePrecisionOpt(QStringList() << "r"
+                                                          << "relative",
+                                            QObject::tr(
+                                                "Use relative precision instead of absolute."));
+    parser.addOption(relativePrecisionOpt);
 
     parser.addPositionalArgument(QObject::tr( "<dxf_files>"), QObject::tr( "Input DXF file(s)"));
 
@@ -74,7 +83,15 @@ int console_dxf2vec(int argc, char* argv[])
 
     params.outFile = parser.value(outFileOpt);
     params.outDir = parser.value(outDirOpt);
-    params.precision = parser.value(precisionOpt).toUInt(nullptr, 10);
+
+    bool ok;
+    params.precision = parser.value(precisionOpt).toDouble(&ok);
+    if (!ok) {
+        qDebug() << "ERROR: Invalid precision value. Using default 1.0.";
+        params.precision = 1.0;
+    }
+
+    params.absolute_precision = !parser.isSet(relativePrecisionOpt);
 
     for (auto &arg : args) {
         QFileInfo dxfFileInfo(arg);

@@ -34,7 +34,8 @@ struct VecConverterParams {
     QStringList dxfFiles;
     QString outDir;
     QString outFile;
-    qint32 precision;
+    double precision;
+    bool absolute_precision;
     qint32 unit;
     qreal paperScale;
 };
@@ -62,7 +63,7 @@ signals:
 private:
     VecConverterParams params{};
 
-    void convertOneDxfToOneVec(const QString&);
+    void convertOneDxfToOneVec(const QString&, double epsilon, bool absolute);
     void convertManyDxfToOneVec();
 };
 
