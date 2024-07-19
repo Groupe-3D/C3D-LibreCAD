@@ -42,6 +42,7 @@
 #include "vec_converter_loop.h"
 
 #define DXF2VEC_MIN_EPSILON 0.001
+#define DXF2VEC_ANGULAR_FACTOR 1.0
 #define DXF2VEC_MAGIC_NUM 1127433216
 #define DXF2VEC_VERSION 1
 
@@ -158,7 +159,10 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                     const RS_Arc *arc = dynamic_cast<const RS_Arc *>(e);
                     if (arc) {
                         double arcLength = arc->getLength();
-                        int numSegments = std::max(2, static_cast<int>(arcLength / (epsilon * 2)));
+                        int numSegments = std::max(2,
+                                                   static_cast<int>(
+                                                       arcLength
+                                                       / (epsilon * DXF2VEC_ANGULAR_FACTOR)));
 
                         RS_Vector center = arc->getCenter();
                         double radius = arc->getRadius();
@@ -174,7 +178,8 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                         for (int i = 0; i <= numSegments; ++i) {
                             double angle = startAngle + i * angleStep;
                             RS_Vector point(center.x + radius * cos(angle),
-                                            center.y + radius * sin(angle));
+                                            center.y + radius * sin(angle),
+                                            center.z);
                             RS_Vector transformedPoint = convertAndScalePoint(point);
                             polylinePoints.append(QVector3D(transformedPoint.x,
                                                             transformedPoint.y,

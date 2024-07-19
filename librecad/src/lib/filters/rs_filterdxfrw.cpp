@@ -384,7 +384,7 @@ void RS_FilterDXFRW::endBlock() {
  * Implementation of the method which handles point entities.
  */
 void RS_FilterDXFRW::addPoint(const DRW_Point& data) {
-    RS_Vector v(data.basePoint.x, data.basePoint.y);
+    RS_Vector v(data.basePoint.x, data.basePoint.y, data.basePoint.z);
 
     RS_Point* entity = new RS_Point(currentContainer,
                                     RS_PointData(v));
@@ -501,7 +501,7 @@ void RS_FilterDXFRW::addCircle(const DRW_Circle& data) {
  */
 void RS_FilterDXFRW::addArc(const DRW_Arc& data) {
     RS_DEBUG->print("RS_FilterDXF::addArc");
-    RS_Vector v(data.basePoint.x, data.basePoint.y);
+    RS_Vector v(data.basePoint.x, data.basePoint.y, data.basePoint.z);
     RS_ArcData d(v, data.radious,
                  data.staangle,
                  data.endangle,
