@@ -34,6 +34,7 @@
 #include "rs_blocklist.h"
 #include "rs_graphic.h"
 #include "rs_insert.h"
+#include "rs_line.h"
 #include "rs_point.h"
 #include "rs_polyline.h"
 #include "rs_units.h"
@@ -71,15 +72,6 @@ void douglasPeuckerSimplify(const QList<QVector3D> &points,
 
 void VecConverterLoop::run()
 {
-    /*
-    if (params.outFile.isEmpty()) {
-        for (auto &&f : params.dxfFiles) {
-            convertOneDxfToOneVec(f);
-        }
-    } else {
-        convertManyDxfToOneVec();
-    }*/
-
     if (params.outFile.isEmpty()) {
         for (auto &&f : params.dxfFiles) {
             convertOneDxfToOneVec(f, params.precision, params.absolute_precision);
@@ -97,7 +89,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
 {
     QFileInfo dxfFileInfo(dxfFile);
     params.outFile = (params.outDir.isEmpty() ? dxfFileInfo.path() : params.outDir) + "/"
-            + dxfFileInfo.completeBaseName() + ".vec";
+                     + dxfFileInfo.completeBaseName() + ".vec";
 
     RS_Document *doc;
     RS_Graphic *graphic;
@@ -130,10 +122,14 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
             scaleFactor.z = 1;
         }
 
-        auto convertAndScalePoint = [drawingUnit](const RS_Vector &point) {
-            RS_Vector convertedPoint = RS_Units::convert(point, drawingUnit, RS2::Millimeter);
-            return convertedPoint;
-        };
+        auto convertAndScalePoint =
+            [drawingUnit, &scaleFactor, &rotation, &insertionPoint](const RS_Vector &point) {
+                RS_Vector convertedPoint = RS_Units::convert(point, drawingUnit, RS2::Millimeter);
+                convertedPoint = convertedPoint * scaleFactor;
+                convertedPoint.rotate(rotation);
+                convertedPoint += insertionPoint;
+                return convertedPoint;
+            };
 
         switch (entity->rtti()) {
         case RS2::EntityPolyline: {
@@ -150,67 +146,63 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
 
             for (const RS_Entity *e : *polyline) {
                 if (e->rtti() == RS2::EntityLine) {
-                    const RS_Point *point = dynamic_cast<const RS_Point *>(e);
-                    RS_Vector startPoint = point->getPos();
-                    startPoint = convertAndScalePoint(startPoint);
-                    startPoint = startPoint * scaleFactor;
-                    startPoint.rotate(rotation);
-                    startPoint += insertionPoint;
-                    polylinePoints.append(QVector3D(startPoint.x, startPoint.y, startPoint.z));
-                } else if (e->rtti() == RS2::EntityArc) {
-                    const RS_Arc *arc = dynamic_cast<const RS_Arc *>(e);
-                    double arcLength = arc->getLength();
-                    int numSegments = std::max(2, static_cast<int>(arcLength / (epsilon * 2)));
-
-                    RS_Vector startPoint = arc->getStartpoint();
-                    RS_Vector endPoint = arc->getEndpoint();
-
-                    // Convert and transform start and end points
-                    startPoint = convertAndScalePoint(startPoint);
-                    startPoint = startPoint * scaleFactor;
-                    startPoint.rotate(rotation);
-                    startPoint += insertionPoint;
-
-                    endPoint = convertAndScalePoint(endPoint);
-                    endPoint = endPoint * scaleFactor;
-                    endPoint.rotate(rotation);
-                    endPoint += insertionPoint;
-
-                    // Add start point
-                    polylinePoints.append(QVector3D(startPoint.x, startPoint.y, startPoint.z));
-
-                    // Calculate and add intermediate points for the arc
-                    for (int i = 1; i < numSegments; ++i) {
-                        double t = static_cast<double>(i) / numSegments;
-                        RS_Vector intermediatePoint = arc->getPointAtDist(arcLength * t);
-                        intermediatePoint = convertAndScalePoint(intermediatePoint);
-                        intermediatePoint = intermediatePoint * scaleFactor;
-                        intermediatePoint.rotate(rotation);
-                        intermediatePoint += insertionPoint;
-                        polylinePoints.append(QVector3D(intermediatePoint.x,
-                                                        intermediatePoint.y,
-                                                        intermediatePoint.z));
+                    const RS_Line *line = dynamic_cast<const RS_Line *>(e);
+                    if (line) {
+                        RS_Vector startPoint = convertAndScalePoint(line->getStartpoint());
+                        polylinePoints.append(QVector3D(startPoint.x, startPoint.y, startPoint.z));
+                    } else {
+                        qDebug() << "Failed to cast EntityLine";
                     }
 
-                    // Add end point
-                    polylinePoints.append(QVector3D(endPoint.x, endPoint.y, endPoint.z));
+                } else if (e->rtti() == RS2::EntityArc) {
+                    const RS_Arc *arc = dynamic_cast<const RS_Arc *>(e);
+                    if (arc) {
+                        double arcLength = arc->getLength();
+                        int numSegments = std::max(2, static_cast<int>(arcLength / (epsilon * 2)));
+
+                        RS_Vector center = arc->getCenter();
+                        double radius = arc->getRadius();
+                        double startAngle = arc->getAngle1();
+                        double endAngle = arc->getAngle2();
+                        bool reversed = arc->isReversed();
+
+                        double angleStep = (endAngle - startAngle) / numSegments;
+                        if (reversed) {
+                            angleStep = -angleStep;
+                        }
+
+                        for (int i = 0; i <= numSegments; ++i) {
+                            double angle = startAngle + i * angleStep;
+                            RS_Vector point(center.x + radius * cos(angle),
+                                            center.y + radius * sin(angle));
+                            RS_Vector transformedPoint = convertAndScalePoint(point);
+                            polylinePoints.append(QVector3D(transformedPoint.x,
+                                                            transformedPoint.y,
+                                                            transformedPoint.z));
+                        }
+                    } else {
+                        qDebug() << "Failed to cast EntityArc";
+                    }
                 } else {
                     qDebug() << "Ignore entity with rtti=" << e->rtti()
-                             << "(not an EntityLine) in EntityPolyline";
+                             << "(not an EntityLine or EntityArc) in EntityPolyline";
                 }
             }
 
-            const RS_Entity *lastEntity = polyline->last();
-            if (lastEntity && lastEntity->rtti() == RS2::EntityLine) {
-                RS_Vector endPoint = lastEntity->getEndpoint();
-                endPoint = convertAndScalePoint(endPoint);
-                endPoint = endPoint * scaleFactor;
-                endPoint.rotate(rotation);
-                endPoint += insertionPoint;
-                polylinePoints.append(QVector3D(endPoint.x, endPoint.y, endPoint.z));
+            if (polylineData.closed && !polylinePoints.isEmpty()) {
+                polylinePoints.append(polylinePoints.first());
             }
 
-            allPolylinesPoints.append(std::make_pair(polylineData, polylinePoints));
+            // Apply Douglas-Peucker simplification to this polyline
+            QList<QVector3D> simplifiedPoints;
+            douglasPeuckerSimplify(polylinePoints,
+                                   epsilon,
+                                   simplifiedPoints,
+                                   0,
+                                   polylinePoints.size() - 1);
+
+            polylineData.count = simplifiedPoints.size();
+            allPolylinesPoints.append(std::make_pair(polylineData, simplifiedPoints));
             break;
         }
         case RS2::EntityInsert: {
@@ -218,24 +210,17 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
             RS_Block *block = graphic->getBlockList()->find(insert->getName());
 
             if (block) {
-                RS_Vector newInsertionPoint = insert->getInsertionPoint();
+                RS_Vector newInsertionPoint = convertAndScalePoint(insert->getInsertionPoint());
                 RS_Vector newScaleFactor = insert->getScale();
-                double newRotation = insert->getAngle();
+                double newRotation = insert->getAngle() + rotation;
 
                 if (newScaleFactor.z == 0) {
                     newScaleFactor.z = 1;
                 }
 
-                newInsertionPoint = convertAndScalePoint(newInsertionPoint);
-                newInsertionPoint = newInsertionPoint * scaleFactor;
-                newInsertionPoint.rotate(rotation);
-                newInsertionPoint += insertionPoint;
-
                 newScaleFactor.x *= scaleFactor.x;
                 newScaleFactor.y *= scaleFactor.y;
                 newScaleFactor.z *= scaleFactor.z;
-
-                newRotation += rotation;
 
                 for (RS_Entity *subEntity : *block) {
                     processEntityRef(subEntity,
@@ -248,44 +233,40 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
             break;
         }
         case RS2::EntityLine: {
-            QList<QVector3D> linePoints;
-            PolylineData lineData;
+            const RS_Line *line = dynamic_cast<const RS_Line *>(entity);
 
-            lineData.id = entity->getId();
-            lineData.color = 0;
-            lineData.count = 2;
-            lineData.padding = 0;
-            lineData.visible = entity->isVisible();
-            lineData.closed = false;
+            if (line) {
+                QList<QVector3D> linePoints;
+                PolylineData lineData;
 
-            RS_Vector startPoint = entity->getStartpoint();
-            RS_Vector endPoint = entity->getEndpoint();
+                lineData.id = line->getId();
+                lineData.color = line->getPen().getColor().toIntColor();
+                lineData.count = 2;
+                lineData.padding = 0;
+                lineData.visible = line->isVisible();
+                lineData.closed = false;
 
-            startPoint = convertAndScalePoint(startPoint);
-            startPoint = startPoint * scaleFactor;
-            startPoint.rotate(rotation);
-            startPoint += insertionPoint;
+                RS_Vector startPoint = convertAndScalePoint(line->getStartpoint());
+                RS_Vector endPoint = convertAndScalePoint(line->getEndpoint());
 
-            endPoint = convertAndScalePoint(endPoint);
-            endPoint = endPoint * scaleFactor;
-            endPoint.rotate(rotation);
-            endPoint += insertionPoint;
+                linePoints.append(QVector3D(startPoint.x, startPoint.y, startPoint.z));
+                linePoints.append(QVector3D(endPoint.x, endPoint.y, endPoint.z));
 
-            linePoints.append(QVector3D(startPoint.x, startPoint.y, startPoint.z));
-            linePoints.append(QVector3D(endPoint.x, endPoint.y, endPoint.z));
+                allPolylinesPoints.append(std::make_pair(lineData, linePoints));
+            } else {
+                qDebug() << "Failed to cast EntityLine";
+            }
 
-            allPolylinesPoints.append(std::make_pair(lineData, linePoints));
             break;
         }
-
         case RS2::EntityPoint: {
-            if (entity->getPen().getColor().toQColor() == QColor("green")) {
-                start_point = entity->getStartpoint();
+            const RS_Point *point = dynamic_cast<const RS_Point *>(entity);
+            if (point->getPen().getColor().toQColor() == QColor("green")) {
+                start_point = convertAndScalePoint(point->getPos());
                 qDebug() << "start point found=" << start_point.x << start_point.y << start_point.z;
             }
             break;
         }
-
         default: {
             qDebug() << "Ignore top level entity with rtti=" << entity->rtti()
                      << "(not an EntityPolyline, EntityInsert, or EntityLine)";
@@ -297,14 +278,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
         processEntity(entity, RS_Vector(0, 0, 0), RS_Vector(1, 1, 1), 0, processEntity);
     }
 
-    QList<QVector3D> simplifiedPoints;
-    douglasPeuckerSimplify(allPolylinesPoints,
-                           epsilon,
-                           simplifiedPoints,
-                           0,
-                           allPolylinesPoints.size() - 1);
-
-    serializePolylines(simplifiedPoints, params);
+    serializePolylines(allPolylinesPoints, params);
 
     qDebug() << "Printing" << dxfFile << "to" << params.outFile << "DONE";
 
