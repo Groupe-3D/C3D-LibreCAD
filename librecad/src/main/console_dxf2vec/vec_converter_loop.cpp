@@ -23,10 +23,12 @@
 **
 ******************************************************************************/
 
+#include <QDataStream>
 #include <QList>
+#include <QMap>
 #include <QVector3D>
 #include <QtCore>
-#include <QDataStream>
+#include <optional>
 
 #include "rs.h"
 #include "rs_arc.h"
@@ -62,17 +64,12 @@ static bool openDocAndSetGraphic(RS_Document **, RS_Graphic **, const QString &)
 void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &,
                         const VecConverterParams &);
 double calculateEpsilon(double clientPrecision, const RS_Graphic *graphic = nullptr);
-double pointToLineDistance(const QVector3D &point,
-                           const QVector3D &lineStart,
-                           const QVector3D &lineEnd);
 void douglasPeuckerSimplify(const QList<QVector3D> &points,
                             double epsilon,
-                            QList<QVector3D> &simplified,
-                            int start,
-                            int end);
-void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
+                            QList<QVector3D> &simplified);
+void reorderPolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &in,
                       QList<std::pair<PolylineData, QList<QVector3D>>> &out,
-                      QVector3D start_point);
+                      std::optional<QVector3D> start_point = std::nullopt);
 
 void VecConverterLoop::run()
 {
@@ -91,6 +88,8 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                                              double epsilon_input,
                                              bool absolute)
 {
+    qDebug() << "p=" << params.precision << " abs=" << params.absolute_precision;
+
     QFileInfo dxfFileInfo(dxfFile);
     params.outFile = (params.outDir.isEmpty() ? dxfFileInfo.path() : params.outDir) + "/"
                      + dxfFileInfo.completeBaseName() + ".vec";
@@ -110,7 +109,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
     params.unit = static_cast<qint32>(drawingUnit);
     RS_Units::setCurrentDrawingUnits(drawingUnit);
 
-    RS_Vector start_point;
+    std::optional<QVector3D> start_point = std::nullopt;
 
     auto processEntity = [&allPolylinesPoints,
                           &graphic,
@@ -208,11 +207,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
 
             // Apply Douglas-Peucker simplification to this polyline
             QList<QVector3D> simplifiedPoints;
-            douglasPeuckerSimplify(polylinePoints,
-                                   epsilon,
-                                   simplifiedPoints,
-                                   0,
-                                   polylinePoints.size() - 1);
+            douglasPeuckerSimplify(polylinePoints, epsilon, simplifiedPoints);
 
             polylineData.count = simplifiedPoints.size();
             allPolylinesPoints.append(std::make_pair(polylineData, simplifiedPoints));
@@ -279,8 +274,9 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
             const RS_Point *point = dynamic_cast<const RS_Point *>(entity);
             qDebug() << "point color" << point->getPen().getColor().toQColor();
             if (point->getPen().getColor().toQColor() == QColor(Qt::green)) {
-                start_point = convertAndScalePoint(point->getPos());
-                qDebug() << "start point found=" << start_point.x << start_point.y << start_point.z;
+                RS_Vector seam_point = convertAndScalePoint(point->getPos());
+                start_point = QVector3D(seam_point.x, seam_point.y, seam_point.z);
+                qDebug() << "Start Point set:" << *start_point;
             }
             break;
         }
@@ -296,10 +292,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
     }
 
     QList<std::pair<PolylineData, QList<QVector3D>>> reorderedPolylines;
-
-    reorderPolylines(allPolylinesPoints,
-                     reorderedPolylines,
-                     QVector3D(start_point.x, start_point.y, start_point.z));
+    reorderPolylines(allPolylinesPoints, reorderedPolylines, start_point);
 
     for (auto &polyline : reorderedPolylines) {
         for (auto &pt : polyline.second) {
@@ -314,84 +307,41 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
     delete doc;
 }
 
-void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &allPolylinesPoints,
-                      QList<std::pair<PolylineData, QList<QVector3D>>> &reorderedPolylines,
-                      QVector3D start_point)
+void reorderPolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &in,
+                      QList<std::pair<PolylineData, QList<QVector3D>>> &out,
+                      std::optional<QVector3D> start_point)
 {
-    // Find the polyline with the closest point to start_point
-    int closestPolylineIndex = -1;
-    int closestPointIndex = -1;
-    double minDistance = std::numeric_limits<double>::max();
+    out.clear();
 
-    for (int i = 0; i < allPolylinesPoints.size(); ++i) {
-        const auto &polyline = allPolylinesPoints[i].second;
-        for (int j = 0; j < polyline.size(); ++j) {
-            double distance = start_point.distanceToPoint(polyline[j]);
-            if (distance < minDistance) {
-                minDistance = distance;
-                closestPolylineIndex = i;
-                closestPointIndex = j;
-            }
+    qDebug() << "Start point:" << *start_point;
+    float min_z = start_point.has_value() ? start_point->z() : std::numeric_limits<float>::lowest();
+    qDebug() << "Minimum z value:" << min_z;
+
+    qDebug() << "Input polylines:";
+    for (const auto &polyline : in) {
+        if (!polyline.second.isEmpty()) {
+            qDebug() << "  First point z:" << polyline.second.first().z();
         }
     }
 
-    if (closestPolylineIndex != -1) {
-        // Rotate the closest polyline if it's closed
-        auto &closestPolyline = allPolylinesPoints[closestPolylineIndex];
-        if (closestPolyline.first.closed) {
-            std::rotate(closestPolyline.second.begin(),
-                        closestPolyline.second.begin() + closestPointIndex,
-                        closestPolyline.second.end());
+    for (const auto &polyline : in) {
+        if (!polyline.second.isEmpty() && polyline.second.first().z() >= min_z) {
+            out.append(polyline);
         }
-        reorderedPolylines.append(closestPolyline);
-        allPolylinesPoints.removeAt(closestPolylineIndex);
     }
 
-    // Add remaining polylines in order of closest endpoint
-    while (!allPolylinesPoints.isEmpty()) {
-        QVector3D lastPoint = reorderedPolylines.last().second.last();
-        int nextPolylineIndex = -1;
-        double minDistance = std::numeric_limits<double>::max();
+    qDebug() << "Filtered polylines:";
+    for (const auto &polyline : out) {
+        qDebug() << "  First point z:" << polyline.second.first().z();
+    }
 
-        for (int i = 0; i < allPolylinesPoints.size(); ++i) {
-            const auto &polyline = allPolylinesPoints[i].second;
-            double distanceStart = lastPoint.distanceToPoint(polyline.first());
-            double distanceEnd = lastPoint.distanceToPoint(polyline.last());
+    std::sort(out.begin(), out.end(), [](const auto &a, const auto &b) {
+        return a.second.first().z() < b.second.first().z();
+    });
 
-            if (distanceStart < minDistance) {
-                minDistance = distanceStart;
-                nextPolylineIndex = i;
-            }
-            if (distanceEnd < minDistance) {
-                minDistance = distanceEnd;
-                nextPolylineIndex = i;
-            }
-        }
-
-        if (nextPolylineIndex != -1) {
-            auto &nextPolyline = allPolylinesPoints[nextPolylineIndex];
-            if (nextPolyline.first.closed) {
-                // Rotate closed polyline to start with the closest point
-                int closestIndex = 0;
-                minDistance = std::numeric_limits<double>::max();
-                for (int i = 0; i < nextPolyline.second.size(); ++i) {
-                    double distance = lastPoint.distanceToPoint(nextPolyline.second[i]);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestIndex = i;
-                    }
-                }
-                std::rotate(nextPolyline.second.begin(),
-                            nextPolyline.second.begin() + closestIndex,
-                            nextPolyline.second.end());
-            } else if (lastPoint.distanceToPoint(nextPolyline.second.last())
-                       < lastPoint.distanceToPoint(nextPolyline.second.first())) {
-                // Reverse open polyline if its end is closer
-                std::reverse(nextPolyline.second.begin(), nextPolyline.second.end());
-            }
-            reorderedPolylines.append(nextPolyline);
-            allPolylinesPoints.removeAt(nextPolylineIndex);
-        }
+    qDebug() << "Sorted polylines:";
+    for (const auto &polyline : out) {
+        qDebug() << "  First point z:" << polyline.second.first().z();
     }
 }
 
@@ -467,180 +417,60 @@ double calculateEpsilon(double clientPrecision, const RS_Graphic *graphic)
     return epsilon;
 }
 
-/*
-double pointToLineDistance(const QVector3D &point,
-                           const QVector3D &lineStart,
-                           const QVector3D &lineEnd)
-{
-    QVector3D line = lineEnd - lineStart;
-    QVector3D pointVector = point - lineStart;
-    QVector3D crossProduct = QVector3D::crossProduct(line, pointVector);
-    return crossProduct.length() / line.length();
-}*/
-
 void douglasPeuckerSimplify(const QList<QVector3D> &points,
                             double epsilon,
-                            QList<QVector3D> &simplified,
-                            int start,
-                            int end)
+                            QList<QVector3D> &simplified)
 {
-    if (end - start <= 1) {
-        simplified.append(points[start]);
+    simplified.clear();
+
+    if (points.size() <= 2) {
+        simplified = points;
         return;
     }
 
-    double maxDistance = 0;
-    int maxIndex = start;
+    QList<QPair<int, int>> stack;
+    stack.push_back({0, points.size() - 1});
 
-    for (int i = start + 1; i < end; ++i) {
-        double distance = pointToLineDistance(points[i], points[start], points[end]);
-        if (distance > maxDistance) {
-            maxDistance = distance;
-            maxIndex = i;
+    QVector<bool> pointUsed(points.size(), false);
+
+    while (!stack.isEmpty()) {
+        int start = stack.back().first;
+        int end = stack.back().second;
+        stack.pop_back();
+
+        double maxDistance = 0;
+        int maxIndex = start;
+
+        QVector3D startPoint = points[start];
+        QVector3D endPoint = points[end];
+        QVector3D direction = (endPoint - startPoint).normalized();
+
+        for (int i = start + 1; i < end; ++i) {
+            double distance = points[i].distanceToLine(startPoint, direction);
+            if (distance > maxDistance) {
+                maxDistance = distance;
+                maxIndex = i;
+            }
+        }
+
+        if (maxDistance > epsilon) {
+            stack.push_back({maxIndex, end});
+            stack.push_back({start, maxIndex});
+        } else {
+            pointUsed[start] = true;
+            pointUsed[end] = true;
         }
     }
 
-    if (maxDistance > epsilon) {
-        douglasPeuckerSimplify(points, epsilon, simplified, start, maxIndex);
-        douglasPeuckerSimplify(points, epsilon, simplified, maxIndex, end);
-    } else {
-        simplified.append(points[start]);
-        simplified.append(points[end]);
-    }
-}
-
-/*
-void VecConverterLoop::convertManyDxfToOneVec() {
-
-    struct DxfPage {
-        RS_Document* doc;
-        RS_Graphic* graphic;
-        QString dxfFile;
-        QPageSize::PageSizeId paperSize;
-    };
-
-    if (!params.outDir.isEmpty()) {
-        QFileInfo outFileInfo(params.outFile);
-        params.outFile = params.outDir + "/" + outFileInfo.fileName();
-    }
-
-    QVector<DxfPage> pages;
-
-    for (auto &dxfFile : params.dxfFiles) {
-        DxfPage page;
-
-        page.dxfFile = dxfFile;
-
-        if (!openDocAndSetGraphic(&page.doc, &page.graphic, dxfFile))
-            continue;
-
-        qDebug() << "Opened" << dxfFile;
-
-        //touchGraphic(page.graphic, params);
-
-        pages.append(page);
-
-        //nrPages++;
-    }
-
-    // TODO
-}
-
-bool deserializePolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &outPolylinesPoints,
-                          const QString &filename)
-{
-    QFile file(filename);
-
-    if (!file.open(QIODevice::ReadOnly)) {
-        qDebug() << "Failed to open file for reading:" << filename;
-        return false;
-    }
-
-    QDataStream in(&file);
-    in.setVersion(QDataStream::Qt_6_6);
-    in.setByteOrder(QDataStream::BigEndian);
-
-    quint32 paddingMagicHeader;
-    in >> paddingMagicHeader;
-
-    if (paddingMagicHeader != DXF2VEC_MAGIC_NUM) {
-        qFatal() << "Error: This file is not a well formatted VEC file";
-        return false;
-    }
-
-    quint32 totalElements;
-    in >> totalElements;
-
-    outPolylinesPoints.reserve(totalElements);
-
-    for (quint32 i = 0; i < totalElements; ++i) {
-        PolylineData polylineData;
-
-        in >> polylineData.id;
-        in >> polylineData.color;
-        in >> polylineData.count;
-        in >> polylineData.padding;
-        in >> polylineData.visible;
-        in >> polylineData.closed;
-
-        quint32 numPoints = polylineData.count;
-
-        QList<QVector3D> polylinePoints;
-        polylinePoints.resize(numPoints);
-        for (quint32 j = 0; j < numPoints; ++j) {
-            in >> polylinePoints[j];
+    // Add all used points to the simplified list in original order
+    for (int i = 0; i < points.size(); ++i) {
+        if (pointUsed[i]) {
+            simplified.append(points[i]);
         }
-
-        outPolylinesPoints.append({ polylineData, polylinePoints });
     }
 
-    file.close();
-    return true;
-}
-
-QColor fromIntColor(int color)
-{
-    if (color >= 0) {
-        return QColor((color >> 16) & 0xFF, (color >> 8) & 0xFF, (color) & 0xFF);
-    } else if (color == -1) {
-        // RS2::FlagByLayer
-        return QColor(0, 0, 0); // Layer color
-    } else if (color == -2) {
-        // RS2::FlagByBlock
-        return QColor(0, 0, 0); // Block color
+    // Ensure the last point is added if it's not already there
+    if (simplified.last() != points.last()) {
+        simplified.append(points.last());
     }
-    return QColor(0, 0, 0); // ¯\_(ツ)_/¯
 }
-
-void __debug(QString filename)
-{
-    QList<std::pair<PolylineData, QList<QVector3D>>> resultPolylinesPoints;
-    deserializePolylines(resultPolylinesPoints, filename);
-
-    quint16 polylineCount = 0;
-    for (const auto &polylinePair : resultPolylinesPoints) {
-        const PolylineData &polylineData = polylinePair.first;
-        const QList<QVector3D> &polylinePoints = polylinePair.second;
-        const QColor colorPoly = fromIntColor(polylineData.color);
-        bool extrude = (colorPoly != QColor("red"));
-
-        qDebug() << "# Polyline n" << polylineCount;
-        qDebug() << "Visible:" << (polylineData.visible ? "true" : "false");
-        qDebug() << "Closed:" << (polylineData.closed ? "true" : "false");
-        qDebug() << "ID:" << polylineData.id;
-        qDebug() << "Color:" << colorPoly << "| Extrude:" << (extrude ? "true" : "false");
-        qDebug() << "Count:" << polylineData.count;
-
-        for (const auto &point : polylinePoints) {
-            // qDebug() << polylineCount << point.x() << point.z() << -point.y() << extrude;
-            qDebug() << QVector3D{ point.x(), point.z(), -point.y() } << polylineData.id
-                     << polylineCount << extrude;
-        }
-        polylineCount++;
-
-        qDebug() << "";
-    }
-
-    qDebug() << "DONE";
-}
-*/
