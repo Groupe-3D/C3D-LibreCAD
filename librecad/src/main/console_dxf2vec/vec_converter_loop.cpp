@@ -179,6 +179,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
 
                         double angleStep = (endAngle - startAngle) / numSegments;
                         if (reversed) {
+                            std::swap(startAngle, endAngle);
                             angleStep = -angleStep;
                         }
 
