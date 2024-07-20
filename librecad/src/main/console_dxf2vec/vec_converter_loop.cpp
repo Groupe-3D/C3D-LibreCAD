@@ -137,7 +137,6 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
 
         auto convertAndScaleScalar = [drawingUnit, &scaleFactor](double val) {
             double convertedValue = RS_Units::convert(val, drawingUnit, RS2::Millimeter);
-            // Use the average of x and y scale factors for radius
             double averageScale = (scaleFactor.x + scaleFactor.y) / 2.0;
             return convertedValue * averageScale;
         };
@@ -459,7 +458,7 @@ void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
             return closestIndex;
         };
 
-    auto optimizePolyline = [&distanceSquared](std::pair<PolylineData, QList<QVector3D>> &poly,
+    /*auto optimizePolyline = [&distanceSquared](std::pair<PolylineData, QList<QVector3D>> &poly,
                                                const QVector3D &prevPoint) {
         auto &[data, points] = poly;
         if (data.closed) {
@@ -477,7 +476,7 @@ void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
                    < distanceSquared(points.first(), prevPoint)) {
             std::reverse(points.begin(), points.end());
         }
-    };
+    };*/
 
     QVector3D currentPoint = start_point.value_or(in.first().second.first());
 
@@ -488,7 +487,7 @@ void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
         }
 
         if (index != -1) {
-            optimizePolyline(in[index], currentPoint);
+            //optimizePolyline(in[index], currentPoint);
             out.push_back(std::move(in[index]));
             currentPoint = out.last().second.last();
             in.removeAt(index);
