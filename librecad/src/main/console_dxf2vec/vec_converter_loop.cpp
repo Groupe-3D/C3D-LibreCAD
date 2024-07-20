@@ -312,37 +312,90 @@ void reorderPolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &in
                       std::optional<QVector3D> start_point)
 {
     out.clear();
+    QList<std::pair<PolylineData, QList<QVector3D>>> remaining = in;
 
-    qDebug() << "Start point:" << *start_point;
-    float min_z = start_point.has_value() ? start_point->z() : std::numeric_limits<float>::lowest();
-    qDebug() << "Minimum z value:" << min_z;
+    auto findClosestPolyline = [](const QVector3D &point,
+                                  QList<std::pair<PolylineData, QList<QVector3D>>> &polylines,
+                                  bool allowHigherZ) {
+        auto closestIt = polylines.end();
+        float minDist = std::numeric_limits<float>::max();
+        bool needInvert = false;
+        bool needRotate = false;
 
-    qDebug() << "Input polylines:";
-    for (const auto &polyline : in) {
-        if (!polyline.second.isEmpty()) {
-            qDebug() << "  First point z:" << polyline.second.first().z();
+        for (auto it = polylines.begin(); it != polylines.end(); ++it) {
+            const auto &[data, points] = *it;
+            QVector3D start = points.first();
+            QVector3D end = points.last();
+
+            auto checkPoint = [&](const QVector3D &p, bool invert) {
+                if ((allowHigherZ || p.z() <= point.z()) && (p - point).lengthSquared() < minDist) {
+                    minDist = (p - point).lengthSquared();
+                    closestIt = it;
+                    needInvert = invert;
+                    needRotate = false;
+                }
+            };
+
+            checkPoint(start, false);
+            checkPoint(end, !data.closed);
+
+            if (data.closed) {
+                int rotateIndex = 0;
+                for (int i = 1; i < points.size(); ++i) {
+                    if ((allowHigherZ || points[i].z() <= point.z())
+                        && (points[i] - point).lengthSquared() < minDist) {
+                        minDist = (points[i] - point).lengthSquared();
+                        closestIt = it;
+                        needInvert = false;
+                        needRotate = true;
+                        rotateIndex = i;
+                    }
+                }
+                if (needRotate) {
+                    auto &mutablePoints = const_cast<QList<QVector3D> &>(closestIt->second);
+                    std::rotate(mutablePoints.begin(),
+                                mutablePoints.begin() + rotateIndex,
+                                mutablePoints.end());
+                }
+            }
         }
-    }
 
-    for (const auto &polyline : in) {
-        if (!polyline.second.isEmpty() && polyline.second.first().z() >= min_z) {
-            out.append(polyline);
+        if (closestIt != polylines.end() && needInvert) {
+            std::reverse(closestIt->second.begin(), closestIt->second.end());
         }
+
+        return closestIt;
+    };
+
+    QVector3D currentPoint = start_point.value_or(QVector3D());
+    bool firstPolyline = true;
+
+    while (!remaining.empty()) {
+        auto it = firstPolyline && start_point.has_value()
+                      ? std::find_if(remaining.begin(),
+                                     remaining.end(),
+                                     [&](const auto &p) { return p.second.first() == currentPoint; })
+                      : findClosestPolyline(currentPoint, remaining, !firstPolyline);
+
+        if (it == remaining.end()) {
+            // If no suitable polyline found, try again allowing higher Z
+            it = findClosestPolyline(currentPoint, remaining, true);
+        }
+
+        if (it != remaining.end()) {
+            out.append(*it);
+            currentPoint = it->second.last();
+            remaining.erase(it);
+        } else {
+            // No suitable polyline found, break the loop
+            break;
+        }
+
+        firstPolyline = false;
     }
 
-    qDebug() << "Filtered polylines:";
-    for (const auto &polyline : out) {
-        qDebug() << "  First point z:" << polyline.second.first().z();
-    }
-
-    std::sort(out.begin(), out.end(), [](const auto &a, const auto &b) {
-        return a.second.first().z() < b.second.first().z();
-    });
-
-    qDebug() << "Sorted polylines:";
-    for (const auto &polyline : out) {
-        qDebug() << "  First point z:" << polyline.second.first().z();
-    }
+    // Append any remaining polylines
+    out.append(remaining);
 }
 
 void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &allPolylinesPoints,
