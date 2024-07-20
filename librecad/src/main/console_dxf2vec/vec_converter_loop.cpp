@@ -434,60 +434,47 @@ void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
     auto findClosestPolylineIndex =
         [&distanceSquared](const QVector3D &point,
                            const QList<std::pair<PolylineData, QList<QVector3D>>> &polylines,
-                           bool allowHigherZ) {
+                           bool allowHigherZ,
+                           bool &reversed) {
             int closestIndex = -1;
             float minDist = std::numeric_limits<float>::max();
 
             for (int i = 0; i < polylines.size(); ++i) {
                 const auto &[data, points] = polylines[i];
 
-                auto checkPoint = [&](const QVector3D &p) {
-                    if ((allowHigherZ || p.z() <= point.z())
-                        && distanceSquared(p, point) < minDist) {
-                        minDist = distanceSquared(p, point);
-                        closestIndex = i;
-                    }
-                };
-
-                checkPoint(points.first());
-                if (!data.closed) {
-                    checkPoint(points.last());
+                const auto &first = points.first();
+                const auto &last = points.last();
+                if ((allowHigherZ || first.z() <= point.z())
+                    && distanceSquared(first, point) < minDist) {
+                    minDist = distanceSquared(first, point);
+                    closestIndex = i;
+                    reversed = false;
+                } else if (!data.closed
+                           && ((allowHigherZ || last.z() <= point.z())
+                               && distanceSquared(last, point) < minDist)) {
+                    minDist = distanceSquared(last, point);
+                    closestIndex = i;
+                    reversed = true;
                 }
             }
 
             return closestIndex;
         };
 
-    /*auto optimizePolyline = [&distanceSquared](std::pair<PolylineData, QList<QVector3D>> &poly,
-                                               const QVector3D &prevPoint) {
-        auto &[data, points] = poly;
-        if (data.closed) {
-            int minIndex = 0;
-            float minDist = distanceSquared(points[0], prevPoint);
-            for (int i = 1; i < points.size(); ++i) {
-                float dist = distanceSquared(points[i], prevPoint);
-                if (dist < minDist) {
-                    minDist = dist;
-                    minIndex = i;
-                }
-            }
-            std::rotate(points.begin(), points.begin() + minIndex, points.end());
-        } else if (distanceSquared(points.last(), prevPoint)
-                   < distanceSquared(points.first(), prevPoint)) {
-            std::reverse(points.begin(), points.end());
-        }
-    };*/
-
     QVector3D currentPoint = start_point.value_or(in.first().second.first());
 
     while (!in.isEmpty()) {
-        int index = findClosestPolylineIndex(currentPoint, in, false);
+        bool need_reverse = false;
+        int index = findClosestPolylineIndex(currentPoint, in, false, need_reverse);
         if (index == -1) {
-            index = findClosestPolylineIndex(currentPoint, in, true);
+            index = findClosestPolylineIndex(currentPoint, in, true, need_reverse);
         }
 
         if (index != -1) {
-            //optimizePolyline(in[index], currentPoint);
+            if (need_reverse) {
+                std::reverse(in[index].second.begin(), in[index].second.end());
+            }
+
             out.push_back(std::move(in[index]));
             currentPoint = out.last().second.last();
             in.removeAt(index);
@@ -496,7 +483,6 @@ void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
         }
     }
 
-    // Append any remaining polylines
     out.append(std::move(in));
     in.clear();
 }
