@@ -34,6 +34,7 @@
 #include "rs_arc.h"
 #include "rs_block.h"
 #include "rs_blocklist.h"
+#include "rs_circle.h"
 #include "rs_graphic.h"
 #include "rs_insert.h"
 #include "rs_line.h"
@@ -67,7 +68,7 @@ double calculateEpsilon(double clientPrecision, const RS_Graphic *graphic = null
 void douglasPeuckerSimplify(const QList<QVector3D> &points,
                             double epsilon,
                             QList<QVector3D> &simplified);
-void reorderPolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &in,
+void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
                       QList<std::pair<PolylineData, QList<QVector3D>>> &out,
                       std::optional<QVector3D> start_point = std::nullopt);
 
@@ -134,6 +135,22 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                 return convertedPoint;
             };
 
+        auto convertAndScaleScalar = [drawingUnit, &scaleFactor](double val) {
+            double convertedValue = RS_Units::convert(val, drawingUnit, RS2::Millimeter);
+            // Use the average of x and y scale factors for radius
+            double averageScale = (scaleFactor.x + scaleFactor.y) / 2.0;
+            return convertedValue * averageScale;
+        };
+
+        auto convertAndScaleRadius = [drawingUnit, &scaleFactor](const RS_Vector &radius) {
+            RS_Vector convertedRadius = RS_Units::convert(radius, drawingUnit, RS2::Millimeter);
+            return RS_Vector(convertedRadius.x * scaleFactor.x,
+                             convertedRadius.y * scaleFactor.y,
+                             convertedRadius.z * scaleFactor.z);
+        };
+
+        auto convertAndScaleAngle = [&rotation](double angle) { return angle + rotation; };
+
         switch (entity->rtti()) {
         case RS2::EntityPolyline: {
             qDebug() << "TOP RS2::EntityPolyline";
@@ -171,10 +188,10 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                                                        arcLength
                                                        / (epsilon * DXF2VEC_ANGULAR_FACTOR)));
 
-                        RS_Vector center = arc->getCenter();
-                        double radius = arc->getRadius();
-                        double startAngle = arc->getAngle1();
-                        double endAngle = arc->getAngle2();
+                        RS_Vector center = convertAndScalePoint(arc->getCenter());
+                        double radius = convertAndScaleScalar(arc->getRadius());
+                        double startAngle = convertAndScaleAngle(arc->getAngle1());
+                        double endAngle = convertAndScaleAngle(arc->getAngle2());
                         bool reversed = arc->isReversed();
 
                         double angleStep = (endAngle - startAngle) / numSegments;
@@ -188,10 +205,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                             RS_Vector point(center.x + radius * cos(angle),
                                             center.y + radius * sin(angle),
                                             center.z);
-                            RS_Vector transformedPoint = convertAndScalePoint(point);
-                            polylinePoints.append(QVector3D(transformedPoint.x,
-                                                            transformedPoint.y,
-                                                            transformedPoint.z));
+                            polylinePoints.append(QVector3D(point.x, point.y, point.z));
                         }
                     } else {
                         qDebug() << "Failed to cast EntityArc";
@@ -281,9 +295,96 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
             }
             break;
         }
+        case RS2::EntityArc: {
+            qDebug() << "TOP RS2::EntityArc";
+            const RS_Arc *arc = dynamic_cast<const RS_Arc *>(entity);
+            if (arc) {
+                QList<QVector3D> arcPoints;
+                PolylineData arcData;
+
+                arcData.id = arc->getId();
+                arcData.color = arc->getPen().getColor().toIntColor();
+                arcData.padding = 0;
+                arcData.visible = arc->isVisible();
+                arcData.closed = false;
+
+                RS_Vector center = convertAndScalePoint(arc->getCenter());
+                RS_Vector radius = convertAndScaleRadius(
+                    RS_Vector(arc->getRadius(), arc->getRadius()));
+                double startAngle = convertAndScaleAngle(arc->getAngle1());
+                double endAngle = convertAndScaleAngle(arc->getAngle2());
+                bool reversed = arc->isReversed();
+
+                double maxRadius = std::max(radius.x, radius.y);
+                double arcLength = maxRadius * std::abs(endAngle - startAngle);
+                int numSegments = std::max(2,
+                                           static_cast<int>(arcLength
+                                                            / (epsilon * DXF2VEC_ANGULAR_FACTOR)));
+
+                double angleStep = (endAngle - startAngle) / numSegments;
+                if (reversed) {
+                    std::swap(startAngle, endAngle);
+                    angleStep = -angleStep;
+                }
+
+                for (int i = 0; i <= numSegments; ++i) {
+                    double angle = startAngle + i * angleStep;
+                    RS_Vector point(center.x + radius.x * cos(angle),
+                                    center.y + radius.y * sin(angle),
+                                    center.z);
+                    arcPoints.append(QVector3D(point.x, point.y, point.z));
+                }
+
+                arcData.count = arcPoints.size();
+                allPolylinesPoints.append(std::make_pair(arcData, arcPoints));
+            } else {
+                qDebug() << "Failed to cast EntityArc";
+            }
+            break;
+        }
+
+        case RS2::EntityCircle: {
+            qDebug() << "TOP RS2::EntityCircle";
+            const RS_Circle *circle = dynamic_cast<const RS_Circle *>(entity);
+            if (circle) {
+                QList<QVector3D> circlePoints;
+                PolylineData circleData;
+
+                circleData.id = circle->getId();
+                circleData.color = circle->getPen().getColor().toIntColor();
+                circleData.padding = 0;
+                circleData.visible = circle->isVisible();
+                circleData.closed = true;
+
+                RS_Vector center = convertAndScalePoint(circle->getCenter());
+                RS_Vector radius = convertAndScaleRadius(
+                    RS_Vector(circle->getRadius(), circle->getRadius()));
+
+                double maxRadius = std::max(radius.x, radius.y);
+                double circumference = 2 * M_PI * maxRadius;
+                int numSegments = std::max(2,
+                                           static_cast<int>(circumference
+                                                            / (epsilon * DXF2VEC_ANGULAR_FACTOR)));
+
+                for (int i = 0; i <= numSegments; ++i) {
+                    double angle = 2 * M_PI * i / numSegments;
+                    RS_Vector point(center.x + radius.x * cos(angle),
+                                    center.y + radius.y * sin(angle),
+                                    center.z);
+                    circlePoints.append(QVector3D(point.x, point.y, point.z));
+                }
+
+                circleData.count = circlePoints.size();
+                allPolylinesPoints.append(std::make_pair(circleData, circlePoints));
+            } else {
+                qDebug() << "Failed to cast EntityCircle";
+            }
+            break;
+        }
         default: {
             qDebug() << "Ignore top level entity with rtti=" << entity->rtti()
-                     << "(not an EntityPolyline, EntityInsert, or EntityLine)";
+                     << "(not an EntityPolyline, EntityInsert, EntityLine, EntityPoint, EntityArc, "
+                        "EntityCircle)";
         }
         }
     };
@@ -308,95 +409,89 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
     delete doc;
 }
 
-void reorderPolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &in,
+void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
                       QList<std::pair<PolylineData, QList<QVector3D>>> &out,
                       std::optional<QVector3D> start_point)
 {
     out.clear();
-    QList<std::pair<PolylineData, QList<QVector3D>>> remaining = in;
+    out.reserve(in.size());
 
-    auto findClosestPolyline = [](const QVector3D &point,
-                                  QList<std::pair<PolylineData, QList<QVector3D>>> &polylines,
-                                  bool allowHigherZ) {
-        auto closestIt = polylines.end();
-        float minDist = std::numeric_limits<float>::max();
-        bool needInvert = false;
-        bool needRotate = false;
+    if (in.empty()) {
+        return;
+    }
 
-        for (auto it = polylines.begin(); it != polylines.end(); ++it) {
-            const auto &[data, points] = *it;
-            QVector3D start = points.first();
-            QVector3D end = points.last();
-
-            auto checkPoint = [&](const QVector3D &p, bool invert) {
-                if ((allowHigherZ || p.z() <= point.z()) && (p - point).lengthSquared() < minDist) {
-                    minDist = (p - point).lengthSquared();
-                    closestIt = it;
-                    needInvert = invert;
-                    needRotate = false;
-                }
-            };
-
-            checkPoint(start, false);
-            checkPoint(end, !data.closed);
-
-            if (data.closed) {
-                int rotateIndex = 0;
-                for (int i = 1; i < points.size(); ++i) {
-                    if ((allowHigherZ || points[i].z() <= point.z())
-                        && (points[i] - point).lengthSquared() < minDist) {
-                        minDist = (points[i] - point).lengthSquared();
-                        closestIt = it;
-                        needInvert = false;
-                        needRotate = true;
-                        rotateIndex = i;
-                    }
-                }
-                if (needRotate) {
-                    auto &mutablePoints = const_cast<QList<QVector3D> &>(closestIt->second);
-                    std::rotate(mutablePoints.begin(),
-                                mutablePoints.begin() + rotateIndex,
-                                mutablePoints.end());
-                }
-            }
-        }
-
-        if (closestIt != polylines.end() && needInvert) {
-            std::reverse(closestIt->second.begin(), closestIt->second.end());
-        }
-
-        return closestIt;
+    auto distanceSquared = [](const QVector3D &a, const QVector3D &b) {
+        return (a - b).lengthSquared();
     };
 
-    QVector3D currentPoint = start_point.value_or(QVector3D());
-    bool firstPolyline = true;
+    auto findClosestPolylineIndex =
+        [&distanceSquared](const QVector3D &point,
+                           const QList<std::pair<PolylineData, QList<QVector3D>>> &polylines,
+                           bool allowHigherZ) {
+            int closestIndex = -1;
+            float minDist = std::numeric_limits<float>::max();
 
-    while (!remaining.empty()) {
-        auto it = firstPolyline && start_point.has_value()
-                      ? std::find_if(remaining.begin(),
-                                     remaining.end(),
-                                     [&](const auto &p) { return p.second.first() == currentPoint; })
-                      : findClosestPolyline(currentPoint, remaining, !firstPolyline);
+            for (int i = 0; i < polylines.size(); ++i) {
+                const auto &[data, points] = polylines[i];
 
-        if (it == remaining.end()) {
-            // If no suitable polyline found, try again allowing higher Z
-            it = findClosestPolyline(currentPoint, remaining, true);
+                auto checkPoint = [&](const QVector3D &p) {
+                    if ((allowHigherZ || p.z() <= point.z())
+                        && distanceSquared(p, point) < minDist) {
+                        minDist = distanceSquared(p, point);
+                        closestIndex = i;
+                    }
+                };
+
+                checkPoint(points.first());
+                if (!data.closed) {
+                    checkPoint(points.last());
+                }
+            }
+
+            return closestIndex;
+        };
+
+    auto optimizePolyline = [&distanceSquared](std::pair<PolylineData, QList<QVector3D>> &poly,
+                                               const QVector3D &prevPoint) {
+        auto &[data, points] = poly;
+        if (data.closed) {
+            int minIndex = 0;
+            float minDist = distanceSquared(points[0], prevPoint);
+            for (int i = 1; i < points.size(); ++i) {
+                float dist = distanceSquared(points[i], prevPoint);
+                if (dist < minDist) {
+                    minDist = dist;
+                    minIndex = i;
+                }
+            }
+            std::rotate(points.begin(), points.begin() + minIndex, points.end());
+        } else if (distanceSquared(points.last(), prevPoint)
+                   < distanceSquared(points.first(), prevPoint)) {
+            std::reverse(points.begin(), points.end());
+        }
+    };
+
+    QVector3D currentPoint = start_point.value_or(in.first().second.first());
+
+    while (!in.isEmpty()) {
+        int index = findClosestPolylineIndex(currentPoint, in, false);
+        if (index == -1) {
+            index = findClosestPolylineIndex(currentPoint, in, true);
         }
 
-        if (it != remaining.end()) {
-            out.append(*it);
-            currentPoint = it->second.last();
-            remaining.erase(it);
+        if (index != -1) {
+            optimizePolyline(in[index], currentPoint);
+            out.push_back(std::move(in[index]));
+            currentPoint = out.last().second.last();
+            in.removeAt(index);
         } else {
-            // No suitable polyline found, break the loop
             break;
         }
-
-        firstPolyline = false;
     }
 
     // Append any remaining polylines
-    out.append(remaining);
+    out.append(std::move(in));
+    in.clear();
 }
 
 void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &allPolylinesPoints,
