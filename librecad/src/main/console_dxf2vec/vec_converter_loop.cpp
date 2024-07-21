@@ -196,20 +196,26 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                         double angleStep = (endAngle - startAngle) / numSegments;
                         if (reversed) {
                             std::swap(startAngle, endAngle);
-                            angleStep = -angleStep;
                         }
 
+                        QList<QVector3D> tempPoints;
                         RS_Vector point = {center.x + radius * cos(startAngle),
                                            center.y + radius * sin(startAngle),
                                            center.z};
                         for (int i = 1; i <= numSegments; ++i) {
                             double angle = startAngle + i * angleStep;
-                            polylinePoints.append(QVector3D(point.x, point.y, point.z));
+                            tempPoints.append(QVector3D(point.x, point.y, point.z));
                             point = {center.x + radius * cos(angle),
                                      center.y + radius * sin(angle),
                                      center.z};
-                            polylinePoints.append(QVector3D(point.x, point.y, point.z));
+                            tempPoints.append(QVector3D(point.x, point.y, point.z));
                         }
+
+                        if (reversed) {
+                            std::reverse(tempPoints.begin(), tempPoints.end());
+                        }
+                        polylinePoints.append(tempPoints);
+
                     } else {
                         qDebug() << "Failed to cast EntityArc";
                     }
@@ -327,7 +333,6 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                 double angleStep = (endAngle - startAngle) / numSegments;
                 if (reversed) {
                     std::swap(startAngle, endAngle);
-                    angleStep = -angleStep;
                 }
 
                 RS_Vector point(center.x + radius.x * cos(startAngle),
@@ -343,6 +348,10 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                 }
 
                 arcData.count = arcPoints.size();
+                if (reversed) {
+                    std::reverse(arcPoints.begin(), arcPoints.end());
+                }
+
                 allPolylinesPoints.append(std::make_pair(arcData, arcPoints));
             } else {
                 qDebug() << "Failed to cast EntityArc";
