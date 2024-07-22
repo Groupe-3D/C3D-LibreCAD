@@ -181,7 +181,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                     qDebug() << "RS2::EntityArc";
                     const RS_Arc *arc = dynamic_cast<const RS_Arc *>(e);
                     if (arc) {
-                        double arcLength = arc->getLength();
+                        double arcLength = convertAndScaleScalar(arc->getLength());
                         int numSegments = std::max(2,
                                                    static_cast<int>(
                                                        arcLength
@@ -194,27 +194,22 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                         bool reversed = arc->isReversed();
 
                         double angleStep = (endAngle - startAngle) / numSegments;
+
                         if (reversed) {
-                            std::swap(startAngle, endAngle);
+                            angleStep = -angleStep;
                         }
 
-                        QList<QVector3D> tempPoints;
                         RS_Vector point = {center.x + radius * cos(startAngle),
                                            center.y + radius * sin(startAngle),
                                            center.z};
                         for (int i = 1; i <= numSegments; ++i) {
                             double angle = startAngle + i * angleStep;
-                            tempPoints.append(QVector3D(point.x, point.y, point.z));
+                            polylinePoints.append(QVector3D(point.x, point.y, point.z));
                             point = {center.x + radius * cos(angle),
                                      center.y + radius * sin(angle),
                                      center.z};
-                            tempPoints.append(QVector3D(point.x, point.y, point.z));
+                            polylinePoints.append(QVector3D(point.x, point.y, point.z));
                         }
-
-                        if (reversed) {
-                            std::reverse(tempPoints.begin(), tempPoints.end());
-                        }
-                        polylinePoints.append(tempPoints);
 
                     } else {
                         qDebug() << "Failed to cast EntityArc";
@@ -308,49 +303,44 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
             qDebug() << "TOP RS2::EntityArc";
             const RS_Arc *arc = dynamic_cast<const RS_Arc *>(entity);
             if (arc) {
-                QList<QVector3D> arcPoints;
-                PolylineData arcData;
+                double arcLength = convertAndScaleScalar(arc->getLength());
+                int numSegments = std::max(2,
+                                           static_cast<int>(arcLength
+                                                            / (epsilon * DXF2VEC_ANGULAR_FACTOR)));
 
+                RS_Vector center = convertAndScalePoint(arc->getCenter());
+                double radius = convertAndScaleScalar(arc->getRadius());
+                double startAngle = convertAndScaleAngle(arc->getAngle1());
+                double endAngle = convertAndScaleAngle(arc->getAngle2());
+                bool reversed = arc->isReversed();
+
+                double angleStep = (endAngle - startAngle) / numSegments;
+
+                if (reversed) {
+                    angleStep = -angleStep;
+                }
+
+                QList<QVector3D> arcPoints;
+
+                RS_Vector point(center.x + radius * cos(startAngle),
+                                center.y + radius * sin(startAngle),
+                                center.z);
+                for (int i = 1; i <= numSegments; ++i) {
+                    double angle = startAngle + i * angleStep;
+                    arcPoints.append(QVector3D(point.x, point.y, point.z));
+                    point = {center.x + radius * cos(angle),
+                             center.y + radius * sin(angle),
+                             center.z};
+                    arcPoints.append(QVector3D(point.x, point.y, point.z));
+                }
+
+                PolylineData arcData;
                 arcData.id = arc->getId();
                 arcData.color = arc->getPen().getColor().toIntColor();
                 arcData.padding = 0;
                 arcData.visible = arc->isVisible();
                 arcData.closed = false;
-
-                RS_Vector center = convertAndScalePoint(arc->getCenter());
-                RS_Vector radius = convertAndScaleRadius(
-                    RS_Vector(arc->getRadius(), arc->getRadius()));
-                double startAngle = convertAndScaleAngle(arc->getAngle1());
-                double endAngle = convertAndScaleAngle(arc->getAngle2());
-                bool reversed = arc->isReversed();
-
-                double maxRadius = std::max(radius.x, radius.y);
-                double arcLength = maxRadius * std::abs(endAngle - startAngle);
-                int numSegments = std::max(2,
-                                           static_cast<int>(arcLength
-                                                            / (epsilon * DXF2VEC_ANGULAR_FACTOR)));
-
-                double angleStep = (endAngle - startAngle) / numSegments;
-                if (reversed) {
-                    std::swap(startAngle, endAngle);
-                }
-
-                RS_Vector point(center.x + radius.x * cos(startAngle),
-                                center.y + radius.y * sin(startAngle),
-                                center.z);
-                for (int i = 1; i <= numSegments; ++i) {
-                    double angle = startAngle + i * angleStep;
-                    arcPoints.append(QVector3D(point.x, point.y, point.z));
-                    point = {center.x + radius.x * cos(angle),
-                             center.y + radius.y * sin(angle),
-                             center.z};
-                    arcPoints.append(QVector3D(point.x, point.y, point.z));
-                }
-
                 arcData.count = arcPoints.size();
-                if (reversed) {
-                    std::reverse(arcPoints.begin(), arcPoints.end());
-                }
 
                 allPolylinesPoints.append(std::make_pair(arcData, arcPoints));
             } else {
