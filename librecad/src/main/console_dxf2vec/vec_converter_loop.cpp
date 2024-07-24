@@ -148,7 +148,33 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                              convertedRadius.z * scaleFactor.z);
         };
 
-        auto convertAndScaleAngle = [&rotation](double angle) { return angle + rotation; };
+        auto approximateArcWithLines = [=](const RS_Arc *arc, QList<QVector3D> &lines) -> void {
+            double radius = convertAndScaleScalar(arc->getRadius());
+            double angle1 = arc->getAngle1();
+            double angleLength = convertAndScaleScalar(arc->getAngleLength());
+            RS_Vector center = convertAndScalePoint(arc->getCenter());
+
+            int numSegments = std::ceil(std::abs(angleLength * radius / epsilon));
+
+            numSegments = std::max(numSegments, 4);
+
+            double angleStep = angleLength / numSegments;
+
+            RS_Vector prevPoint = arc->getStartpoint();
+
+            for (int i = 1; i <= numSegments; ++i) {
+                double angle = angle1 + i * angleStep;
+                if (arc->isReversed()) {
+                    angle = angle1 - i * angleStep;
+                }
+
+                RS_Vector currentPoint = center + RS_Vector{angle} * radius;
+
+                lines.emplace_back(QVector3D(prevPoint.x, prevPoint.y, prevPoint.z));
+                lines.emplace_back(QVector3D(currentPoint.x, currentPoint.y, currentPoint.z));
+                prevPoint = currentPoint;
+            }
+        };
 
         switch (entity->rtti()) {
         case RS2::EntityPolyline: {
@@ -181,36 +207,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                     qDebug() << "RS2::EntityArc";
                     const RS_Arc *arc = dynamic_cast<const RS_Arc *>(e);
                     if (arc) {
-                        double arcLength = convertAndScaleScalar(arc->getLength());
-                        int numSegments = std::max(2,
-                                                   static_cast<int>(
-                                                       arcLength
-                                                       / (epsilon * DXF2VEC_ANGULAR_FACTOR)));
-
-                        RS_Vector center = convertAndScalePoint(arc->getCenter());
-                        double radius = convertAndScaleScalar(arc->getRadius());
-                        double startAngle = convertAndScaleAngle(arc->getAngle1());
-                        double endAngle = convertAndScaleAngle(arc->getAngle2());
-                        bool reversed = arc->isReversed();
-
-                        double angleStep = (endAngle - startAngle) / numSegments;
-
-                        if (reversed) {
-                            angleStep = -angleStep;
-                        }
-
-                        RS_Vector point = {center.x + radius * cos(startAngle),
-                                           center.y + radius * sin(startAngle),
-                                           center.z};
-                        for (int i = 1; i <= numSegments; ++i) {
-                            double angle = startAngle + i * angleStep;
-                            polylinePoints.append(QVector3D(point.x, point.y, point.z));
-                            point = {center.x + radius * cos(angle),
-                                     center.y + radius * sin(angle),
-                                     center.z};
-                            polylinePoints.append(QVector3D(point.x, point.y, point.z));
-                        }
-
+                        approximateArcWithLines(arc, polylinePoints);
                     } else {
                         qDebug() << "Failed to cast EntityArc";
                     }
@@ -303,36 +300,10 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
             qDebug() << "TOP RS2::EntityArc";
             const RS_Arc *arc = dynamic_cast<const RS_Arc *>(entity);
             if (arc) {
-                double arcLength = convertAndScaleScalar(arc->getLength());
-                int numSegments = std::max(2,
-                                           static_cast<int>(arcLength
-                                                            / (epsilon * DXF2VEC_ANGULAR_FACTOR)));
-
-                RS_Vector center = convertAndScalePoint(arc->getCenter());
-                double radius = convertAndScaleScalar(arc->getRadius());
-                double startAngle = convertAndScaleAngle(arc->getAngle1());
-                double endAngle = convertAndScaleAngle(arc->getAngle2());
-                bool reversed = arc->isReversed();
-
-                double angleStep = (endAngle - startAngle) / numSegments;
-
-                if (reversed) {
-                    angleStep = -angleStep;
-                }
 
                 QList<QVector3D> arcPoints;
 
-                RS_Vector point(center.x + radius * cos(startAngle),
-                                center.y + radius * sin(startAngle),
-                                center.z);
-                for (int i = 1; i <= numSegments; ++i) {
-                    double angle = startAngle + i * angleStep;
-                    arcPoints.append(QVector3D(point.x, point.y, point.z));
-                    point = {center.x + radius * cos(angle),
-                             center.y + radius * sin(angle),
-                             center.z};
-                    arcPoints.append(QVector3D(point.x, point.y, point.z));
-                }
+                approximateArcWithLines(arc, arcPoints);
 
                 PolylineData arcData;
                 arcData.id = arc->getId();
