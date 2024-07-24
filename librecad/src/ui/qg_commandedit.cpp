@@ -7,7 +7,7 @@
 ** Copyright (C) 2016 ravas (github.com/r-a-v-a-s)
 **
 ** This file may be distributed and/or modified under the terms of the
-** GNU General Public License version 2 as published by the Free Software 
+** GNU General Public License version 2 as published by the Free Software
 ** Foundation and appearing in the file gpl-2.0.txt included in the
 ** packaging of this file.
 **
@@ -15,12 +15,12 @@
 ** but WITHOUT ANY WARRANTY; without even the implied warranty of
 ** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ** GNU General Public License for more details.
-** 
+**
 ** You should have received a copy of the GNU General Public License
 ** along with this program; if not, write to the Free Software
 ** Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 **
-** This copyright notice MUST APPEAR in all copies of the script!  
+** This copyright notice MUST APPEAR in all copies of the script!
 **
 **********************************************************************/
 
@@ -194,7 +194,7 @@ void QG_CommandEdit::keyPressEvent(QKeyEvent* e)
 
 void QG_CommandEdit::evaluateExpression(QString input)
 {
-    QRegularExpression regex(R"~(([\d\.]+)deg|d)~");
+    static QRegularExpression regex(R"~(([\d\.]+)deg|d)~");
     input.replace(regex, R"~(\1*pi/180)~");
     bool ok = true;
     double result = RS_Math::eval(input, &ok);
@@ -258,7 +258,7 @@ void QG_CommandEdit::processInput(QString input)
 QString QG_CommandEdit::filterCliCal(const QString& cmd)
 {
     QString str=cmd.trimmed();
-    const QRegularExpression calCmd(R"(^\s*(cal|calculate)\s?)", QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression calCmd(R"(^\s*(cal|calculate)\s?)", QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch match = calCmd.match(str);
     if(!(match.hasMatch()
          || str.startsWith(QObject::tr("cal ","command to trigger cli calculator"), Qt::CaseInsensitive)
@@ -269,7 +269,8 @@ QString QG_CommandEdit::filterCliCal(const QString& cmd)
     int index = match.capturedEnd(0);
     bool spaceFound=(index>=0);
     str=str.mid(index);
-    index=str.indexOf(QRegularExpression(R"(\S)"));
+    static QRegularExpression reSpace(R"(\S)");
+    index=str.indexOf(reSpace);
     if(!(spaceFound && index>=0))
         return cmd;
     str=str.mid(index);
@@ -393,7 +394,7 @@ void QG_CommandEdit::readCommandFile(const QString& path)
         // read lines to buffer and close the file immediately
         QTextStream txt_stream(&file);
         QStringList lines;
-        for (unsigned int i = 0; i < g_maxLinesToRead; ++i) {
+        for(unsigned i=0; i < g_maxLinesToRead; ++i) {
             if (txt_stream.atEnd())
                 break;
             lines << txt_stream.readLine(g_maxLineLength);
