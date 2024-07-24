@@ -59,18 +59,16 @@ struct alignas(16) PolylineData
     bool closed = false;
 };
 
-// void __debug(QString);
-
 static bool openDocAndSetGraphic(RS_Document **, RS_Graphic **, const QString &);
-void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &,
-                        const VecConverterParams &);
-double calculateEpsilon(double clientPrecision, const RS_Graphic *graphic = nullptr);
-void douglasPeuckerSimplify(const QList<QVector3D> &points,
-                            double epsilon,
-                            QList<QVector3D> &simplified);
-void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
-                      QList<std::pair<PolylineData, QList<QVector3D>>> &out,
-                      std::optional<QVector3D> start_point = std::nullopt);
+static void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &,
+                               const VecConverterParams &);
+static double calculateEpsilon(double clientPrecision, const RS_Graphic *graphic = nullptr);
+static void douglasPeuckerSimplify(const QList<QVector3D> &points,
+                                   double epsilon,
+                                   QList<QVector3D> &simplified);
+static void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
+                             QList<std::pair<PolylineData, QList<QVector3D>>> &out,
+                             std::optional<QVector3D> start_point = std::nullopt);
 
 void VecConverterLoop::run()
 {
@@ -89,7 +87,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                                              double epsilon_input,
                                              bool absolute)
 {
-    qDebug() << "p=" << params.precision << " abs=" << params.absolute_precision;
+    qDebug() << "Precision:" << params.precision << " Absolute:" << params.absolute_precision;
 
     QFileInfo dxfFileInfo(dxfFile);
     params.outFile = (params.outDir.isEmpty() ? dxfFileInfo.path() : params.outDir) + "/"
@@ -178,7 +176,6 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
 
         switch (entity->rtti()) {
         case RS2::EntityPolyline: {
-            qDebug() << "TOP RS2::EntityPolyline";
             RS_Polyline *polyline = static_cast<RS_Polyline *>(entity);
             QList<QVector3D> polylinePoints;
             PolylineData polylineData;
@@ -192,7 +189,6 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
 
             for (const RS_Entity *e : *polyline) {
                 if (e->rtti() == RS2::EntityLine) {
-                    qDebug() << "RS2::EntityLine";
                     const RS_Line *line = dynamic_cast<const RS_Line *>(e);
                     if (line) {
                         RS_Vector startPoint = convertAndScalePoint(line->getStartpoint());
@@ -204,7 +200,6 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                     }
 
                 } else if (e->rtti() == RS2::EntityArc) {
-                    qDebug() << "RS2::EntityArc";
                     const RS_Arc *arc = dynamic_cast<const RS_Arc *>(e);
                     if (arc) {
                         approximateArcWithLines(arc, polylinePoints);
@@ -230,7 +225,6 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
             break;
         }
         case RS2::EntityInsert: {
-            qDebug() << "TOP RS2::EntityInsert";
             RS_Insert *insert = static_cast<RS_Insert *>(entity);
             RS_Block *block = graphic->getBlockList()->find(insert->getName());
 
@@ -258,7 +252,6 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
             break;
         }
         case RS2::EntityLine: {
-            qDebug() << "TOP RS2::EntityLine";
             const RS_Line *line = dynamic_cast<const RS_Line *>(entity);
 
             if (line) {
@@ -286,18 +279,14 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
             break;
         }
         case RS2::EntityPoint: {
-            qDebug() << "TOP RS2::EntityPoint";
             const RS_Point *point = dynamic_cast<const RS_Point *>(entity);
-            qDebug() << "point color" << point->getPen().getColor().toQColor();
             if (point->getPen().getColor().toQColor() == QColor(Qt::green)) {
                 RS_Vector seam_point = convertAndScalePoint(point->getPos());
                 start_point = QVector3D(seam_point.x, seam_point.y, seam_point.z);
-                qDebug() << "Start Point set:" << *start_point;
             }
             break;
         }
         case RS2::EntityArc: {
-            qDebug() << "TOP RS2::EntityArc";
             const RS_Arc *arc = dynamic_cast<const RS_Arc *>(entity);
             if (arc) {
 
@@ -321,7 +310,6 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
         }
 
         case RS2::EntityCircle: {
-            qDebug() << "TOP RS2::EntityCircle";
             const RS_Circle *circle = dynamic_cast<const RS_Circle *>(entity);
             if (circle) {
                 QList<QVector3D> circlePoints;
@@ -381,14 +369,14 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
 
     serializePolylines(reorderedPolylines, params);
 
-    qDebug() << "Printing" << dxfFile << "to" << params.outFile << "DONE";
+    qDebug() << "Printing" << dxfFile << "to" << params.outFile << "DONE (e=" << epsilon << ")";
 
     delete doc;
 }
 
-void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
-                      QList<std::pair<PolylineData, QList<QVector3D>>> &out,
-                      std::optional<QVector3D> start_point)
+static void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
+                             QList<std::pair<PolylineData, QList<QVector3D>>> &out,
+                             std::optional<QVector3D> start_point)
 {
     out.clear();
     out.reserve(in.size());
@@ -457,8 +445,9 @@ void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
     in.clear();
 }
 
-void serializePolylines(const QList<std::pair<PolylineData, QList<QVector3D>>> &allPolylinesPoints,
-                        const VecConverterParams &params)
+static void serializePolylines(
+    const QList<std::pair<PolylineData, QList<QVector3D>>> &allPolylinesPoints,
+    const VecConverterParams &params)
 {
     QString filename = params.outFile;
     QFile file(filename);
@@ -516,7 +505,7 @@ static bool openDocAndSetGraphic(RS_Document **doc, RS_Graphic **graphic, const 
     return true;
 }
 
-double calculateEpsilon(double clientPrecision, const RS_Graphic *graphic)
+static double calculateEpsilon(double clientPrecision, const RS_Graphic *graphic)
 {
     double epsilon = std::max(clientPrecision, DXF2VEC_MIN_EPSILON);
 
@@ -529,9 +518,9 @@ double calculateEpsilon(double clientPrecision, const RS_Graphic *graphic)
     return epsilon;
 }
 
-void douglasPeuckerSimplify(const QList<QVector3D> &points,
-                            double epsilon,
-                            QList<QVector3D> &simplified)
+static void douglasPeuckerSimplify(const QList<QVector3D> &points,
+                                   double epsilon,
+                                   QList<QVector3D> &simplified)
 {
     simplified.clear();
 
