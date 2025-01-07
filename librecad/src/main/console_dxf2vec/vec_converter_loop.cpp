@@ -166,11 +166,11 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                     angle = angle1 - i * angleStep;
                 }
 
-                RS_Vector currentPoint = center + RS_Vector{angle} * radius;
+                RS_Vector currPoint = center + RS_Vector{angle} * radius;
 
                 lines.emplace_back(QVector3D(prevPoint.x, prevPoint.y, prevPoint.z));
-                lines.emplace_back(QVector3D(currentPoint.x, currentPoint.y, currentPoint.z));
-                prevPoint = currentPoint;
+                lines.emplace_back(QVector3D(currPoint.x, currPoint.y, currPoint.z));
+                prevPoint = currPoint;
             }
         };
 
@@ -358,91 +358,11 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
         processEntity(entity, RS_Vector(0, 0, 0), RS_Vector(1, 1, 1), 0, processEntity);
     }
 
-    QList<std::pair<PolylineData, QList<QVector3D>>> reorderedPolylines;
-    reorderPolylines(allPolylinesPoints, reorderedPolylines, start_point);
-
-    for (auto &polyline : reorderedPolylines) {
-        for (auto &pt : polyline.second) {
-            qDebug() << pt;
-        }
-    }
-
-    serializePolylines(reorderedPolylines, params);
+    serializePolylines(allPolylinesPoints, params);
 
     qDebug() << "Printing" << dxfFile << "to" << params.outFile << "DONE (e=" << epsilon << ")";
 
     delete doc;
-}
-
-static void reorderPolylines(QList<std::pair<PolylineData, QList<QVector3D>>> &in,
-                             QList<std::pair<PolylineData, QList<QVector3D>>> &out,
-                             std::optional<QVector3D> start_point)
-{
-    out.clear();
-    out.reserve(in.size());
-
-    if (in.empty()) {
-        return;
-    }
-
-    auto distanceSquared = [](const QVector3D &a, const QVector3D &b) {
-        return (a - b).lengthSquared();
-    };
-
-    auto findClosestPolylineIndex =
-        [&distanceSquared](const QVector3D &point,
-                           const QList<std::pair<PolylineData, QList<QVector3D>>> &polylines,
-                           bool allowHigherZ,
-                           bool &reversed) {
-            int closestIndex = -1;
-            float minDist = std::numeric_limits<float>::max();
-
-            for (int i = 0; i < polylines.size(); ++i) {
-                const auto &[data, points] = polylines[i];
-
-                const auto &first = points.first();
-                const auto &last = points.last();
-                if ((allowHigherZ || first.z() <= point.z())
-                    && distanceSquared(first, point) < minDist) {
-                    minDist = distanceSquared(first, point);
-                    closestIndex = i;
-                    reversed = false;
-                } else if (!data.closed
-                           && ((allowHigherZ || last.z() <= point.z())
-                               && distanceSquared(last, point) < minDist)) {
-                    minDist = distanceSquared(last, point);
-                    closestIndex = i;
-                    reversed = true;
-                }
-            }
-
-            return closestIndex;
-        };
-
-    QVector3D currentPoint = start_point.value_or(in.first().second.first());
-
-    while (!in.isEmpty()) {
-        bool need_reverse = false;
-        int index = findClosestPolylineIndex(currentPoint, in, false, need_reverse);
-        if (index == -1) {
-            index = findClosestPolylineIndex(currentPoint, in, true, need_reverse);
-        }
-
-        if (index != -1) {
-            if (need_reverse) {
-                std::reverse(in[index].second.begin(), in[index].second.end());
-            }
-
-            out.push_back(std::move(in[index]));
-            currentPoint = out.last().second.last();
-            in.removeAt(index);
-        } else {
-            break;
-        }
-    }
-
-    out.append(std::move(in));
-    in.clear();
 }
 
 static void serializePolylines(
