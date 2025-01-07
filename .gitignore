@@ -107,3 +107,5 @@ core.*
 *.sln
 /cmake-build-debug/
 cad/
+
+librecad/.qtc_clangd/

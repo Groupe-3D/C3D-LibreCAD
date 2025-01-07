@@ -1,3 +1,5 @@
+QT += boost
+
 TEMPLATE = subdirs
 TARGET = librecad
 CONFIG += ordered
