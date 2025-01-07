@@ -278,14 +278,14 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
 
             break;
         }
-        case RS2::EntityPoint: {
-            const RS_Point *point = dynamic_cast<const RS_Point *>(entity);
-            if (point->getPen().getColor().toQColor() == QColor(Qt::green)) {
-                RS_Vector seam_point = convertAndScalePoint(point->getPos());
-                start_point = QVector3D(seam_point.x, seam_point.y, seam_point.z);
-            }
-            break;
-        }
+        // case RS2::EntityPoint: {
+        //     const RS_Point *point = dynamic_cast<const RS_Point *>(entity);
+        //     if (point->getPen().getColor().toQColor() == QColor(Qt::green)) {
+        //         RS_Vector seam_point = convertAndScalePoint(point->getPos());
+        //         start_point = QVector3D(seam_point.x, seam_point.y, seam_point.z);
+        //     }
+        //     break;
+        // }
         case RS2::EntityArc: {
             const RS_Arc *arc = dynamic_cast<const RS_Arc *>(entity);
             if (arc) {
