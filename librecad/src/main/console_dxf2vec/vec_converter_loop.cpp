@@ -158,7 +158,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
 
             double angleStep = angleLength / numSegments;
 
-            RS_Vector prevPoint = arc->getStartpoint();
+            RS_Vector prevPoint = center + RS_Vector{angle1} * radius;
 
             for (int i = 1; i <= numSegments; ++i) {
                 double angle = angle1 + i * angleStep;
