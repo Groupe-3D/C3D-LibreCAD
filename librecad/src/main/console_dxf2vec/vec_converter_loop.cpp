@@ -40,11 +40,12 @@
 #include "rs_line.h"
 #include "rs_point.h"
 #include "rs_polyline.h"
+#include "rs_spline.h"
 #include "rs_units.h"
 
 #include "vec_converter_loop.h"
 
-#define DXF2VEC_MIN_EPSILON 0.001
+#define DXF2VEC_MIN_EPSILON 1.0
 #define DXF2VEC_ANGULAR_FACTOR 1.0
 #define DXF2VEC_MAGIC_NUM 1127433216
 #define DXF2VEC_VERSION 1
@@ -152,7 +153,7 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
             double angleLength = convertAndScaleScalar(arc->getAngleLength());
             RS_Vector center = convertAndScalePoint(arc->getCenter());
 
-            int numSegments = std::ceil(std::abs(angleLength * radius / epsilon));
+            int numSegments = std::round(std::abs(angleLength * radius / epsilon));
 
             numSegments = std::max(numSegments, 4);
 
@@ -171,6 +172,22 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                 lines.emplace_back(QVector3D(prevPoint.x, prevPoint.y, prevPoint.z));
                 lines.emplace_back(QVector3D(currPoint.x, currPoint.y, currPoint.z));
                 prevPoint = currPoint;
+            }
+        };
+        
+        auto approximateSplineWithLines = [=](const RS_Spline *spline, QList<QVector3D> &lines) -> void {
+            if(!spline->getControlPoints().empty()) {
+                RS_Vector prevPoint = convertAndScalePoint(spline->getControlPoints()[0]);
+                        
+                for(auto controlPoint = spline->getControlPoints().begin()++;
+                    controlPoint != spline->getControlPoints().end();
+                    controlPoint++) {
+                    
+                    RS_Vector currPoint = convertAndScalePoint(*controlPoint);
+                    lines.emplace_back(QVector3D(prevPoint.x, prevPoint.y, prevPoint.z));
+                    lines.emplace_back(QVector3D(currPoint.x, currPoint.y, currPoint.z));
+                    prevPoint = currPoint;
+                }
             }
         };
 
@@ -308,7 +325,6 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
             }
             break;
         }
-
         case RS2::EntityCircle: {
             const RS_Circle *circle = dynamic_cast<const RS_Circle *>(entity);
             if (circle) {
@@ -345,6 +361,31 @@ void VecConverterLoop::convertOneDxfToOneVec(const QString &dxfFile,
                 qDebug() << "Failed to cast EntityCircle";
             }
             break;
+        }
+        case RS2::EntitySpline: {
+            const RS_Spline *spline = dynamic_cast<const RS_Spline *>(entity);
+            
+            if (spline) {
+                QList<QVector3D> splinePoints;
+
+                approximateSplineWithLines(spline, splinePoints);
+
+                PolylineData splineData;
+                splineData.id = spline->getId();
+                splineData.color = spline->getPen().getColor().toIntColor();
+                splineData.padding = 0;
+                splineData.visible = spline->isVisible();
+                splineData.closed = false;
+                splineData.count = splinePoints.size();
+
+                allPolylinesPoints.append(std::make_pair(splineData, splinePoints));
+            } else {
+                qDebug() << "Failed to cast Spline to vector3D";
+            }
+            break;
+        }
+        case RS2::EntitySplinePoints: {
+            qDebug() << " ----------   [REFERENCE]   ---------  :  spline point read";
         }
         default: {
             qDebug() << "Ignore top level entity with rtti=" << entity->rtti()
